@@ -295,7 +295,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   <div class="form-row">
     <div class="field">
       <label>Bungie API Key</label>
-      <input type="password" id="apiKey" placeholder="Paste your API key" />
+      <input type="password" id="apiKey" placeholder="Paste your API key" value="65dad06c7ac04b90ba4096ecf0c9f6f5" />
       <div class="hint">Get free key at <a href="https://www.bungie.net/en/Application" target="_blank">bungie.net/en/Application</a></div>
     </div>
     <div class="field">
@@ -328,6 +328,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v30</div>
 
 <!-- Compare overlay -->
 <div id="compareOverlay" class="compare-overlay">
@@ -340,7 +341,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 <script>
 // ===================== CONSTANTS =====================
 const BUNGIE_CLIENT_ID = '51779';
-const BUNGIE_REDIRECT_URL = 'https://fluffy-gaufre-74724b.netlify.app';
+const BUNGIE_REDIRECT_URL = 'https://destiny-2-item-compare.vercel.app';
 const BUNGIE_AUTH_URL = 'https://www.bungie.net/en/OAuth/Authorize';
 const BUNGIE_TOKEN_URL = 'https://www.bungie.net/Platform/App/OAuth/Token/';
 const CLASS_NAMES  = {0:'Titan',1:'Hunter',2:'Warlock'};
@@ -537,6 +538,9 @@ async function searchPlayer() {
   const rawId  = document.getElementById('bungieId').value.trim();
   clearError();
   document.getElementById('app').style.display='none';
+  // Save key and ID for convenience
+  if (apiKey) localStorage.setItem('d2_pre_oauth_key', apiKey);
+  if (rawId)  localStorage.setItem('d2_pre_oauth_id', rawId);
   if (!apiKey) { showError('Please enter your Bungie API key.'); return; }
   const parts = rawId.split('#');
   if (parts.length!==2||!parts[1]) { showError('Format must be Name#Code'); return; }
@@ -1686,6 +1690,9 @@ function renderMarkTab(markType) {
 
 // ===================== INIT =====================
 (async function init() {
+  // Restore saved API key from localStorage
+  const savedKey = localStorage.getItem('d2_pre_oauth_key') || '65dad06c7ac04b90ba4096ecf0c9f6f5';
+  if (savedKey) document.getElementById('apiKey').value = savedKey;
   updateOAuthStatus();
   // Handle OAuth callback redirect
   if (window.location.search.includes('code=')) {
