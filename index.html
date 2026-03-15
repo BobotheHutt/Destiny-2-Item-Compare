@@ -341,6 +341,1648 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 <script>
 // ===================== CONSTANTS =====================
 const BUNGIE_CLIENT_ID = '51779';
+const BUNGIE_REDIRECT_URL = 'https://bobothehutt.github.io/Destiny-2-Item-Compare';
+const BUNGIE_AUTH_URL = 'https://www.bungie.net/en/OAuth/Authorize';
+const BUNGIE_TOKEN_URL = 'https://www.bungie.net/Platform/App/OAuth/Token/';
+const CLASS_NAMES  = {0:'Titan',1:'Hunter',2:'Warlock'};
+const CLASS_KEYS   = {0:'titan',1:'hunter',2:'warlock'};
+const RACE_NAMES   = {0:'Human',1:'Awoken',2:'Exo'};
+const GENDER_NAMES = {0:'Male',1:'Female'};
+const PLATFORMS    = {1:'Xbox',2:'PlayStation',3:'Steam',5:'Stadia',6:'Epic Games',254:'Bungie.net'};
+const RARITY       = {6:'exotic',5:'legendary',4:'rare',3:'uncommon',2:'common'};
+
+const WEAPON_BUCKET_NAMES = {1498876634:'Kinetic',2465295065:'Energy',953998645:'Heavy'};
+const ARMOR_BUCKET_NAMES  = {3448274439:'Helmet',3551918588:'Gauntlets',14239492:'Chest',20886954:'Legs',1585787867:'Class Item'};
+const GENERAL_BUCKETS     = new Set([4023194814,1107761855,2025709351]);
+const WEAPON_BUCKETS      = new Set([1498876634,2465295065,953998645]);
+const ARMOR_BUCKETS       = new Set([3448274439,3551918588,14239492,20886954,1585787867]);
+const VAULT_BUCKET        = 138197802;
+
+const WEAPON_STAT_HASHES = [4284893193,2961396640,155624089,943549884,1240592695,2762071195,3614673599,3871231066,2715839340];
+const WEAPON_STAT_NAMES  = {4284893193:'Impact',2961396640:'Range',155624089:'Stability',943549884:'Handling',1240592695:'Reload Speed',2762071195:'Rounds/Min',3614673599:'Magazine',3871231066:'Aim Assist',2715839340:'Recoil'};
+const ARMOR_STAT_HASHES  = [2996146975,392767087,1943323491,1735777505,144602215,4244567218];
+const ARMOR_STAT_NAMES   = {2996146975:'Weapons',392767087:'Health',1943323491:'Class',1735777505:'Grenade',144602215:'Super',4244567218:'Melee'};
+
+// ===================== STATE =====================
+let manifestItems = {};
+let manifestStats = {};
+let manifestPerks = {};
+let manifestPlugSets = {};
+let allItems      = []; // all weapon+armor items across chars+vault
+let instanceData  = {};
+let socketData    = {};
+let statsData     = {};
+let reusablePlugsData = {};
+let marks         = JSON.parse(localStorage.getItem('d2marks') || '{}');
+let oauthToken    = localStorage.getItem('d2oauth_token') || null;
+let oauthExpiry   = Number(localStorage.getItem('d2oauth_expiry') || 0);
+let profileInfo   = {};
+
+let weaponFilter  = {exotic:true, legendary:true};
+let armorFilter   = {exotic:true, legendary:true};
+let activeWeaponCategory = null;
+let activeWeaponType     = null;
+let activeWeaponBHash    = null;
+let activeArmorClass     = null;
+let activeArmorSlot      = null;
+let compareSort          = 'power';
+
+// ===================== UTILS =====================
+function saveMark(instanceId, mark) {
+  if (mark === null) { delete marks[instanceId]; } else { marks[instanceId] = mark; }
+  localStorage.setItem('d2marks', JSON.stringify(marks));
+}
+function getMark(instanceId) { return marks[instanceId] || null; }
+
+function getItemDef(hash) { return manifestItems[hash] || manifestItems[hash>>>0] || null; }
+function getStatDef(hash) { return manifestStats[hash] || manifestStats[hash>>>0] || null; }
+function getPerkDef(hash) { return manifestPerks[hash] || manifestPerks[hash>>>0] || null; }
+
+function itemRarity(def) { return def?.inventory?.tierType || 0; }
+function rarityKey(def)  { return RARITY[itemRarity(def)] || 'common'; }
+
+function formatDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+
+function setLoading(t) { document.getElementById('loadingText').textContent=t; document.getElementById('loading').style.display='block'; }
+function hideLoading()  { document.getElementById('loading').style.display='none'; }
+function showError(m)   { const e=document.getElementById('error'); e.textContent=m; e.style.display='block'; }
+function clearError()   { document.getElementById('error').style.display='none'; }
+
+function switchMain(tab) {
+  document.querySelectorAll('.main-tab').forEach((t,i)=>t.classList.toggle('active',['characters','weapons','armor','favorites','junk'][i]===tab));
+  document.querySelectorAll('.main-panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+tab));
+  if (tab==='junk') renderMarkTab('junk');
+  if (tab==='favorites') renderMarkTab('favorites');
+}
+
+// ===================== OAUTH =====================
+function oauthLogin() {
+  // Store current API key and bungie ID so we restore them after redirect
+  localStorage.setItem('d2_pre_oauth_key', document.getElementById('apiKey').value);
+  localStorage.setItem('d2_pre_oauth_id', document.getElementById('bungieId').value);
+  // Generate random state for CSRF protection
+  const state = Math.random().toString(36).substring(2);
+  localStorage.setItem('d2oauth_state', state);
+  const url = `${BUNGIE_AUTH_URL}?client_id=${BUNGIE_CLIENT_ID}&response_type=code&state=${state}`;
+  window.location.href = url;
+}
+
+async function handleOAuthCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code  = params.get('code');
+  const state = params.get('state');
+  if (!code) return false;
+
+  const savedState = localStorage.getItem('d2oauth_state');
+  if (state !== savedState) { showError('OAuth state mismatch — please try again.'); return false; }
+
+  const apiKey = localStorage.getItem('d2_pre_oauth_key') || document.getElementById('apiKey').value;
+  setLoading('Completing login…');
+
+  try {
+    const resp = await fetch(BUNGIE_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-API-Key': apiKey
+      },
+      body: `grant_type=authorization_code&code=${code}&client_id=${BUNGIE_CLIENT_ID}&redirect_uri=${encodeURIComponent(BUNGIE_REDIRECT_URL)}`
+    });
+    const data = await resp.json();
+    if (data.access_token) {
+      oauthToken  = data.access_token;
+      oauthExpiry = Date.now() + (data.expires_in * 1000);
+      localStorage.setItem('d2oauth_token',  oauthToken);
+      localStorage.setItem('d2oauth_expiry', String(oauthExpiry));
+      if (data.refresh_token) {
+        localStorage.setItem('d2oauth_refresh', data.refresh_token);
+        localStorage.setItem('d2oauth_refresh_expiry', String(Date.now() + (data.refresh_expires_in * 1000)));
+      }
+      // Restore pre-oauth values
+      const savedKey = localStorage.getItem('d2_pre_oauth_key');
+      const savedId  = localStorage.getItem('d2_pre_oauth_id');
+      if (savedKey) document.getElementById('apiKey').value = savedKey;
+      if (savedId)  document.getElementById('bungieId').value = savedId;
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      hideLoading();
+      updateOAuthStatus();
+      return true;
+    } else {
+      throw new Error('Token exchange failed: ' + JSON.stringify(data));
+    }
+  } catch(e) {
+    hideLoading();
+    showError('OAuth error: ' + e.message);
+    return false;
+  }
+}
+
+async function refreshOAuthToken(apiKey) {
+  const refreshToken  = localStorage.getItem('d2oauth_refresh');
+  const refreshExpiry = Number(localStorage.getItem('d2oauth_refresh_expiry') || 0);
+  if (!refreshToken || Date.now() > refreshExpiry) return false;
+  try {
+    const resp = await fetch(BUNGIE_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-API-Key': apiKey },
+      body: `grant_type=refresh_token&refresh_token=${refreshToken}&client_id=${BUNGIE_CLIENT_ID}`
+    });
+    const data = await resp.json();
+    if (data.access_token) {
+      oauthToken  = data.access_token;
+      oauthExpiry = Date.now() + (data.expires_in * 1000);
+      localStorage.setItem('d2oauth_token',  oauthToken);
+      localStorage.setItem('d2oauth_expiry', String(oauthExpiry));
+      if (data.refresh_token) {
+        localStorage.setItem('d2oauth_refresh', data.refresh_token);
+        localStorage.setItem('d2oauth_refresh_expiry', String(Date.now() + (data.refresh_expires_in * 1000)));
+      }
+      updateOAuthStatus();
+      return true;
+    }
+  } catch(e) { console.warn('Token refresh failed:', e); }
+  return false;
+}
+
+function isOAuthValid() {
+  return oauthToken && Date.now() < oauthExpiry;
+}
+
+function oauthLogout() {
+  oauthToken = null; oauthExpiry = 0;
+  localStorage.removeItem('d2oauth_token');
+  localStorage.removeItem('d2oauth_expiry');
+  localStorage.removeItem('d2oauth_refresh');
+  localStorage.removeItem('d2oauth_refresh_expiry');
+  updateOAuthStatus();
+}
+
+function updateOAuthStatus() {
+  const el = document.getElementById('oauthStatus');
+  if (!el) return;
+  if (isOAuthValid()) {
+    const mins = Math.round((oauthExpiry - Date.now()) / 60000);
+    el.innerHTML = `<span style="color:var(--fav);">✓ Logged in via Bungie OAuth</span> <span style="color:var(--text-dim);">(token expires in ${mins}m)</span> <button onclick="oauthLogout()" style="background:none;border:1px solid var(--border2);color:var(--text-dim);font-size:11px;padding:2px 8px;cursor:pointer;margin-left:8px;">Log out</button>`;
+  } else {
+    el.innerHTML = `<span style="color:var(--text-muted);">Not logged in — </span><button onclick="oauthLogin()" style="background:var(--accent);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 12px;cursor:pointer;">Login with Bungie</button> <span style="color:var(--text-dim);font-size:11px;">for exact weapon perk rolls</span>`;
+  }
+}
+
+// ===================== FETCH =====================
+async function searchPlayer() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const rawId  = document.getElementById('bungieId').value.trim();
+  clearError();
+  document.getElementById('app').style.display='none';
+  // Save key and ID for convenience
+  if (apiKey) localStorage.setItem('d2_pre_oauth_key', apiKey);
+  if (rawId)  localStorage.setItem('d2_pre_oauth_id', rawId);
+  if (!apiKey) { showError('Please enter your Bungie API key.'); return; }
+  const parts = rawId.split('#');
+  if (parts.length!==2||!parts[1]) { showError('Format must be Name#Code'); return; }
+  const displayName=parts[0], displayNameCode=parseInt(parts[1]);
+  document.getElementById('searchBtn').disabled=true;
+  const headers={'X-API-Key':apiKey,'Content-Type':'application/json'};
+
+  try {
+    setLoading('Finding guardian…');
+    console.log('[D2] Searching from origin:', window.location.origin);
+    console.log('[D2] API Key length:', apiKey.length, 'first4:', apiKey.substring(0,4));
+    const sr = await fetch('https://www.bungie.net/Platform/Destiny2/SearchDestinyPlayerByBungieName/-1/',
+      {method:'POST',headers,body:JSON.stringify({displayName,displayNameCode})});
+    console.log('[D2] Search response status:', sr.status);
+    if (!sr.ok) {
+      let errDetail = '';
+      try { const errJson = await sr.json(); errDetail = JSON.stringify(errJson); } catch(e) {}
+      throw new Error(`API error ${sr.status} — ${errDetail || 'check your API key and Origin setting in Bungie app.'}`);
+    }
+    const sd = await sr.json();
+    if (!sd.Response||!sd.Response.length) throw new Error('Guardian not found.');
+    const {membershipType,membershipId,bungieGlobalDisplayName,bungieGlobalDisplayNameCode} = sd.Response[0];
+    profileInfo = {membershipType,membershipId,name:bungieGlobalDisplayName,code:bungieGlobalDisplayNameCode,platform:PLATFORMS[membershipType]||`Type ${membershipType}`};
+
+    setLoading('Loading profile & inventory…');
+    // Use OAuth token if available for richer data (exact weapon rolls via component 306)
+    let profileHeaders = {'X-API-Key': apiKey};
+    if (isOAuthValid()) {
+      profileHeaders['Authorization'] = `Bearer ${oauthToken}`;
+      console.log('[D2] Using OAuth token for profile fetch');
+    } else {
+      // Try refresh
+      const refreshed = await refreshOAuthToken(apiKey);
+      if (refreshed) {
+        profileHeaders['Authorization'] = `Bearer ${oauthToken}`;
+        console.log('[D2] Using refreshed OAuth token');
+      }
+    }
+    const components = isOAuthValid() ? '100,102,200,201,205,300,304,305,306' : '100,102,200,201,205,300,304,305';
+    const pr = await fetch(
+      `https://www.bungie.net/Platform/Destiny2/${membershipType}/Profile/${membershipId}/?components=${components}`,
+      {headers: profileHeaders});
+    if (!pr.ok) throw new Error(`Profile error ${pr.status}`);
+    const pd = await pr.json();
+
+    if (Object.keys(manifestItems).length===0) {
+      setLoading('Loading manifest (first time only)…');
+      const mr = await fetch('https://www.bungie.net/Platform/Destiny2/Manifest/',{headers:{'X-API-Key':apiKey}});
+      const md = await mr.json();
+      const base = md.Response.jsonWorldComponentContentPaths.en;
+      setLoading('Downloading item definitions…');
+      const [items,stats,perks,plugSets] = await Promise.all([
+        fetch('https://www.bungie.net'+base.DestinyInventoryItemDefinition).then(r=>r.json()),
+        fetch('https://www.bungie.net'+base.DestinyStatDefinition).then(r=>r.json()),
+        fetch('https://www.bungie.net'+base.DestinySandboxPerkDefinition).then(r=>r.json()),
+        fetch('https://www.bungie.net'+base.DestinyPlugSetDefinition).then(r=>r.json()),
+      ]);
+      manifestItems = items; manifestStats = stats; manifestPerks = perks; manifestPlugSets = plugSets;
+    }
+
+    hideLoading();
+    document.getElementById('searchBtn').disabled=false;
+
+    const profile     = pd.Response?.profile?.data;
+    const characters  = Object.values(pd.Response?.characters?.data||{});
+    const charEquip   = pd.Response?.characterEquipment?.data||{};
+    const charInv     = pd.Response?.characterInventories?.data||{};
+    const profileInv2 = pd.Response?.profileInventory?.data?.items||[];
+    instanceData      = pd.Response?.itemComponents?.instances?.data||{};
+    socketData        = pd.Response?.itemComponents?.sockets?.data||{};
+    statsData         = pd.Response?.itemComponents?.stats?.data||{};
+    // Component 306 (reusablePlugs) gives exact per-item rolled perks when authenticated via OAuth
+    const comp306 = pd.Response?.itemComponents?.reusablePlugs?.data || {};
+    const hasComp306 = Object.keys(comp306).length > 0;
+    console.log('[D2] component 306 (per-item rolls):', hasComp306 ? Object.keys(comp306).length + ' items' : 'not available (login with OAuth for exact rolls)');
+    console.log('[D2] itemComponents keys with OAuth:', Object.keys(pd.Response?.itemComponents||{}).join(', '));
+    console.log('[D2] components requested:', components);
+    // Log raw 306 data for first item if available
+    if (hasComp306) {
+      const firstKey = Object.keys(comp306)[0];
+      console.log('[D2] sample 306 entry:', firstKey, JSON.stringify(comp306[firstKey]));
+    } else {
+      // Log raw itemComponents to see what's there
+      console.log('[D2] raw itemComponents:', JSON.stringify(Object.keys(pd.Response?.itemComponents||{})));
+      // Check if reusablePlugs exists under different key
+      console.log('[D2] full itemComponents structure:', JSON.stringify(Object.entries(pd.Response?.itemComponents||{}).map(([k,v])=>({key:k, hasData:!!v?.data, dataKeys: Object.keys(v?.data||{}).slice(0,2)}))));
+    }
+
+    if (hasComp306) {
+      // Store as instanceId -> socketIndex -> [plugItemHash]
+      reusablePlugsData = {_perItem: true};
+      Object.entries(comp306).forEach(([iid, data])=>{
+        reusablePlugsData[iid] = {};
+        Object.entries(data.plugs||{}).forEach(([sockIdx, plugArr])=>{
+          reusablePlugsData[iid][sockIdx] = new Set(
+            (plugArr||[]).filter(p=>p.canInsert||p.enabled).map(p=>p.plugItemHash)
+          );
+        });
+      });
+    } else {
+      // Fallback: flat set of all available plugs from profilePlugSets
+      const profilePlugs = pd.Response?.profilePlugSets?.data?.plugs || {};
+      const charPlugSetsAll = pd.Response?.characterPlugSets?.data || {};
+      const availablePlugsFlat = new Set();
+      function collectPlugs(plugsObj) {
+        Object.values(plugsObj||{}).forEach(arr=>{
+          (arr||[]).forEach(p=>{ if(p.canInsert||p.enabled) availablePlugsFlat.add(p.plugItemHash); });
+        });
+      }
+      collectPlugs(profilePlugs);
+      Object.values(charPlugSetsAll).forEach(cd=>collectPlugs(cd?.plugs));
+      reusablePlugsData = availablePlugsFlat;
+      console.log('[D2] total available plugs (fallback):', availablePlugsFlat.size);
+    }
+
+    // Collect all items with location tag
+    // Normalize bucket hashes to numbers
+    function normItem(i) { return {...i, bucketHash: Number(i.bucketHash), itemHash: Number(i.itemHash)}; }
+    allItems = [];
+    characters.sort((a,b)=>new Date(b.dateLastPlayed)-new Date(a.dateLastPlayed));
+    characters.forEach(c=>{
+      const loc = CLASS_NAMES[c.classType]||'Character';
+      (charEquip[c.characterId]?.items||[]).forEach(i=>allItems.push({...normItem(i),loc,equipped:true}));
+      (charInv[c.characterId]?.items||[]).forEach(i=>allItems.push({...normItem(i),loc,equipped:false}));
+    });
+    // Vault items — include ALL items, not just weapon/armor buckets
+    profileInv2.forEach(i=>allItems.push({...normItem(i),loc:'Vault',equipped:false}));
+
+    // Debug
+    const weaponItems = allItems.filter(i=>WEAPON_BUCKETS.has(i.bucketHash));
+    const armorItems  = allItems.filter(i=>ARMOR_BUCKETS.has(i.bucketHash));
+    console.log('[D2] Total allItems:', allItems.length);
+    console.log('[D2] Weapon items:', weaponItems.length, 'Armor items:', armorItems.length);
+    console.log('[D2] Sample weapon bucketHashes:', [...new Set(weaponItems.map(i=>i.bucketHash))]);
+    console.log('[D2] instanceData keys:', Object.keys(instanceData).length);
+    console.log('[D2] socketData keys:', Object.keys(socketData).length);
+
+    renderCharacters(characters, charEquip, profile);
+    renderWeaponsTab();
+    renderArmorTab();
+    document.getElementById('app').style.display='block';
+
+  } catch(err) {
+    hideLoading();
+    document.getElementById('searchBtn').disabled=false;
+    showError(err.message||'Something went wrong.');
+  }
+}
+
+// ===================== CHARACTERS TAB =====================
+function renderCharacters(characters, charEquip, profile) {
+  const totalHours = Math.round(characters.reduce((a,c)=>a+(parseInt(c.minutesPlayedTotal)||0),0)/60);
+  const highestPow = characters.length ? Math.max(...characters.map(c=>c.light||0)) : 0;
+  const iconPath   = profile?.userInfo?.iconPath;
+  const avatarHtml = iconPath
+    ? `<img src="https://www.bungie.net${iconPath}" onerror="this.style.display='none';this.parentElement.textContent='${profileInfo.name[0].toUpperCase()}'" />`
+    : profileInfo.name[0].toUpperCase();
+
+  const charsHtml = characters.map((c,i)=>{
+    const ck = CLASS_KEYS[c.classType]||'unknown';
+    const hrs = Math.round((parseInt(c.minutesPlayedTotal)||0)/60);
+    const equipped = charEquip[c.characterId]?.items||[];
+    const weapons = equipped.filter(i=>WEAPON_BUCKETS.has(i.bucketHash));
+    const armor   = equipped.filter(i=>ARMOR_BUCKETS.has(i.bucketHash));
+    const general = equipped.filter(i=>GENERAL_BUCKETS.has(i.bucketHash));
+    const eqSection = (items,label) => items.length===0?'':
+      `<div class="eq-title">${label}</div>${items.map(it=>renderItemRow(it)).join('')}`;
+    return `<div class="char-card ${ck}">
+      ${i===0?'<div class="recent-badge">Most Recent</div>':''}
+      <div class="char-class">${CLASS_NAMES[c.classType]||'Unknown'}</div>
+      <div class="char-race">${RACE_NAMES[c.raceType]||''} ${GENDER_NAMES[c.genderType]||''}</div>
+      <div class="char-power">${c.light||'—'}</div>
+      <div class="char-power-label">Power Level</div>
+      <div class="char-time">${hrs.toLocaleString()} hrs · Last played ${formatDate(c.dateLastPlayed)}</div>
+      <div class="equipped-section">
+        ${eqSection(weapons,'Weapons')}${eqSection(armor,'Armor')}${eqSection(general,'General')}
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('panel-characters').innerHTML = `
+    <div class="profile-header">
+      <div class="avatar">${avatarHtml}</div>
+      <div>
+        <div class="profile-name">${profileInfo.name}<span>#${profileInfo.code}</span>
+          <span class="platform-badge">${profileInfo.platform}</span></div>
+        <div class="profile-meta">ID: ${profileInfo.membershipId}</div>
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">Characters</div><div class="stat-value">${characters.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Total Hours</div><div class="stat-value">${totalHours.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="stat-label">Highest Power</div><div class="stat-value">${highestPow||'—'}</div></div>
+    </div>
+    <div class="chars-grid">${charsHtml}</div>`;
+}
+
+function renderItemRow(item) {
+  const def = getItemDef(item.itemHash);
+  const name = def?def.displayProperties.name:`Item`;
+  const typeLabel = def?(def.itemTypeDisplayName||''):'';
+  const tier = def?def.inventory?.tierType:0;
+  const rk = RARITY[tier]||'common';
+  const inst = item.itemInstanceId?instanceData[item.itemInstanceId]:null;
+  const power = inst?.primaryStat?.value||null;
+  const iconPath = def?.displayProperties?.hasIcon?def.displayProperties.icon:null;
+  return `<div class="item-row">
+    <div class="rarity-bar rarity-${rk}"></div>
+    <div class="item-icon">${iconPath?`<img src="https://www.bungie.net${iconPath}" />`:`<div class="item-icon-ph">?</div>`}</div>
+    <div class="item-info"><div class="item-name">${name}</div><div class="item-type">${typeLabel}</div></div>
+    ${power?`<div class="item-power">${power}</div>`:''}
+  </div>`;
+}
+
+// ===================== WEAPONS TAB =====================
+function renderWeaponsTab() {
+  const el = document.getElementById('panel-weapons');
+  el.innerHTML = `
+    <div class="inv-controls">
+      <div class="toggle-group">
+        <button class="toggle-btn exotic ${weaponFilter.exotic?'active':''}" onclick="toggleWeaponFilter('exotic',this)">Exotic</button>
+        <button class="toggle-btn legendary ${weaponFilter.legendary?'active':''}" onclick="toggleWeaponFilter('legendary',this)">Legendary</button>
+      </div>
+    </div>
+    <div id="weaponAccordions"></div>
+    <div id="weaponTypeSection"></div>
+    <div id="weaponItemGrid"></div>`;
+  buildWeaponAccordions();
+}
+
+function toggleWeaponFilter(type, btn) {
+  weaponFilter[type] = !weaponFilter[type];
+  btn.classList.toggle('active', weaponFilter[type]);
+  // Rebuild without resetting open accordion or selected type
+  buildWeaponAccordions();
+  // If a type is already selected, re-render the grid with the new filter
+  if (activeWeaponBHash && activeWeaponType) {
+    selectWeaponType(activeWeaponBHash, activeWeaponType);
+  }
+}
+
+function getEffectiveBucketHash(item) {
+  if (item.bucketHash === VAULT_BUCKET) {
+    const def = getItemDef(item.itemHash);
+    return Number(def?.inventory?.bucketTypeHash) || item.bucketHash;
+  }
+  return item.bucketHash;
+}
+
+function getFilteredWeapons() {
+  return allItems.filter(i=>{
+    if (!WEAPON_BUCKETS.has(getEffectiveBucketHash(i))) return false;
+    const def = getItemDef(i.itemHash);
+    if (!def) return false;
+    const tier = def.inventory?.tierType;
+    if (tier===6 && !weaponFilter.exotic) return false;
+    if (tier===5 && !weaponFilter.legendary) return false;
+    if (tier<5) return false;
+    return true;
+  });
+}
+
+function buildWeaponAccordions() {
+  const weapons = getFilteredWeapons();
+  const cats = [1498876634,2465295065,953998645];
+  const html = cats.map(bHash=>{
+    const label = WEAPON_BUCKET_NAMES[bHash];
+    const count = weapons.filter(w=>getEffectiveBucketHash(w)===bHash).length;
+    const isOpen = activeWeaponCategory===bHash;
+    return `<div class="accordion">
+      <div class="accordion-header ${isOpen?'open':''}" onclick="toggleWeaponCat(${bHash},this)">
+        <span class="accordion-title">${label}</span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span class="accordion-count">${count} items</span>
+          <span class="accordion-arrow">▼</span>
+        </span>
+      </div>
+      <div class="accordion-body ${isOpen?'open':''}" id="weaponCat-${bHash}">
+        ${isOpen?buildWeaponTypes(bHash):''}
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('weaponAccordions').innerHTML=html;
+}
+
+function toggleWeaponCat(bHash, headerEl) {
+  bHash = Number(bHash);
+  const wasOpen = activeWeaponCategory===bHash;
+  activeWeaponCategory = wasOpen?null:bHash;
+  activeWeaponType = null;
+  document.getElementById('weaponTypeSection').innerHTML='';
+  document.getElementById('weaponItemGrid').innerHTML='';
+  buildWeaponAccordions();
+}
+
+function buildWeaponTypes(bHash) {
+  const weapons = getFilteredWeapons().filter(w=>getEffectiveBucketHash(w)===bHash);
+  const typeMap = {};
+  weapons.forEach(w=>{
+    const def = getItemDef(w.itemHash);
+    const type = def?.itemTypeDisplayName||'Unknown';
+    if (!typeMap[type]) typeMap[type]=0;
+    typeMap[type]++;
+  });
+  if (!Object.keys(typeMap).length) return '<div class="no-items">No items found.</div>';
+  return `<div class="type-grid">${Object.entries(typeMap).sort((a,b)=>b[1]-a[1]).map(([type,count])=>
+    `<div class="type-pill ${activeWeaponType===type?'active':''}" onclick="selectWeaponType('${bHash}','${type.replace(/'/g,"\\'")}')">
+      ${type} <span class="pill-count">${count}</span>
+    </div>`).join('')}</div>`;
+}
+
+// Global click map — avoids inline JSON/quote issues
+const gridClickMap = {};
+
+function selectWeaponType(bHash, type) {
+  bHash = Number(bHash);
+  activeWeaponType = type;
+  activeWeaponBHash = bHash;
+  const weapons = getFilteredWeapons().filter(w=>getEffectiveBucketHash(w)===bHash);
+  const ofType  = weapons.filter(w=>(getItemDef(w.itemHash)?.itemTypeDisplayName||'Unknown')===type);
+  console.log('[D2] selectWeaponType:', type, 'bHash:', bHash, 'weapons in bucket:', weapons.length, 'ofType:', ofType.length);
+  console.log('[D2] sample types in bucket:', [...new Set(weapons.map(w=>getItemDef(w.itemHash)?.itemTypeDisplayName))]);
+  const nameMap = {};
+  ofType.forEach(w=>{
+    const def = getItemDef(w.itemHash);
+    const name = def?.displayProperties.name||`Item ${w.itemHash}`;
+    if (!nameMap[name]) nameMap[name]=[];
+    nameMap[name].push(w);
+  });
+  let keyIdx = Date.now(); // unique keys each render
+  const gridHtml = Object.entries(nameMap).map(([name,items])=>{
+    const def = getItemDef(items[0].itemHash);
+    const icon = def?.displayProperties?.hasIcon?`<img src="https://www.bungie.net${def.displayProperties.icon}" />`:'';
+    const rk = rarityKey(def);
+    const hasDupes = items.length>1;
+    const markIndicators = items.map(it=>{
+      const m = getMark(it.itemInstanceId);
+      return m?`<div class="mark-indicator mark-${m}"></div>`:'';
+    }).join('');
+    const key = 'wg_'+(keyIdx++);
+    gridClickMap[key] = {instanceIds: items.map(i=>i.itemInstanceId), type:'weapon'};
+    return `<div class="grid-item ${hasDupes?'has-dupes':''}" data-gkey="${key}">
+      <div class="grid-item-icon">${icon}${markIndicators}
+        ${hasDupes?`<div class="dupe-badge">${items.length}</div>`:''}
+      </div>
+      <div class="grid-item-name">${name}</div>
+    </div>`;
+  }).join('');
+  const gridEl = document.getElementById('weaponItemGrid');
+  gridEl.innerHTML = `
+    <div class="item-grid-section">
+      <div class="item-grid-title">${type} <span style="color:var(--text-dim);font-size:10px;margin-left:4px;">${ofType.length} items · ${Object.keys(nameMap).length} unique</span></div>
+      <div class="item-grid">${gridHtml}</div>
+    </div>`;
+  console.log('[D2] grid items rendered:', gridEl.querySelectorAll('.grid-item').length);
+  gridEl.querySelectorAll('.grid-item').forEach(node=>{
+    node.addEventListener('click', ()=>{
+      console.log('[D2] grid item clicked, key:', node.dataset.gkey, gridClickMap[node.dataset.gkey]);
+      const entry = gridClickMap[node.dataset.gkey];
+      if (entry) openCompare(entry.instanceIds, entry.type);
+    });
+  });
+  // Rebuild accordions AFTER grid so it doesn't interfere
+  buildWeaponAccordions();
+}
+
+// ===================== ARMOR TAB =====================
+function renderArmorTab() {
+  const el = document.getElementById('panel-armor');
+  el.innerHTML = `
+    <div class="inv-controls">
+      <div class="toggle-group">
+        <button class="toggle-btn exotic ${armorFilter.exotic?'active':''}" onclick="toggleArmorFilter('exotic',this)">Exotic</button>
+        <button class="toggle-btn legendary ${armorFilter.legendary?'active':''}" onclick="toggleArmorFilter('legendary',this)">Legendary</button>
+      </div>
+    </div>
+    <div id="armorAccordions"></div>
+    <div id="armorSlotSection"></div>
+    <div id="armorItemGrid"></div>`;
+  buildArmorAccordions();
+}
+
+function toggleArmorFilter(type, btn) {
+  armorFilter[type] = !armorFilter[type];
+  btn.classList.toggle('active', armorFilter[type]);
+  // Rebuild without resetting open accordion or selected slot
+  buildArmorAccordions();
+  if (activeArmorClass !== null && activeArmorSlot) {
+    selectArmorSlot(activeArmorClass, activeArmorSlot);
+  }
+}
+
+function getFilteredArmor() {
+  return allItems.filter(i=>{
+    if (!ARMOR_BUCKETS.has(getEffectiveBucketHash(i))) return false;
+    const def = getItemDef(i.itemHash);
+    if (!def) return false;
+    const tier = def.inventory?.tierType;
+    if (tier===6 && !armorFilter.exotic) return false;
+    if (tier===5 && !armorFilter.legendary) return false;
+    if (tier<5) return false;
+    return true;
+  });
+}
+
+function buildArmorAccordions() {
+  const armor = getFilteredArmor();
+  const classes = [0,1,2];
+  const html = classes.map(classType=>{
+    const label = CLASS_NAMES[classType];
+    const count = armor.filter(a=>{
+      const def = getItemDef(a.itemHash);
+      return def?.classType===classType || def?.classType===3;
+    }).length;
+    const isOpen = activeArmorClass===classType;
+    return `<div class="accordion">
+      <div class="accordion-header ${isOpen?'open':''}" onclick="toggleArmorClass(${classType},this)">
+        <span class="accordion-title">${label}</span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span class="accordion-count">${count} items</span>
+          <span class="accordion-arrow">▼</span>
+        </span>
+      </div>
+      <div class="accordion-body ${isOpen?'open':''}" id="armorClass-${classType}">
+        ${isOpen?buildArmorSlots(classType):''}
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('armorAccordions').innerHTML=html;
+}
+
+function toggleArmorClass(classType, headerEl) {
+  const wasOpen = activeArmorClass===classType;
+  activeArmorClass = wasOpen?null:classType;
+  activeArmorSlot = null;
+  document.getElementById('armorSlotSection').innerHTML='';
+  document.getElementById('armorItemGrid').innerHTML='';
+  buildArmorAccordions();
+}
+
+function buildArmorSlots(classType) {
+  const armor = getFilteredArmor().filter(a=>{
+    const def = getItemDef(a.itemHash);
+    return def?.classType===classType || def?.classType===3;
+  });
+  const slotMap = {};
+  armor.forEach(a=>{
+    const slot = ARMOR_BUCKET_NAMES[getEffectiveBucketHash(a)]||'Unknown';
+    if (!slotMap[slot]) slotMap[slot]=0;
+    slotMap[slot]++;
+  });
+  const slotOrder = ['Helmet','Gauntlets','Chest','Legs','Class Item'];
+  return `<div class="type-grid">${slotOrder.filter(s=>slotMap[s]).map(slot=>
+    `<div class="type-pill ${activeArmorSlot===slot&&activeArmorClass===classType?'active':''}" onclick="selectArmorSlot(${classType},'${slot}')">
+      ${slot} <span class="pill-count">${slotMap[slot]}</span>
+    </div>`).join('')}</div>`;
+}
+
+function selectArmorSlot(classType, slot) {
+  activeArmorClass=classType; activeArmorSlot=slot;
+  buildArmorAccordions();
+  const bucketHash = Number(Object.entries(ARMOR_BUCKET_NAMES).find(([k,v])=>v===slot)?.[0]);
+  const armor = getFilteredArmor().filter(a=>{
+    const def = getItemDef(a.itemHash);
+    return (def?.classType===classType||def?.classType===3) && getEffectiveBucketHash(a)===bucketHash;
+  });
+  // Show each armor piece individually; clicking opens compare with ALL items in slot
+  const allSlotIds = armor.map(a=>a.itemInstanceId);
+  let aKeyIdx = 0;
+  const gridHtml = armor.map(a=>{
+    const def = getItemDef(a.itemHash);
+    const name = def?.displayProperties.name||'Item';
+    const icon = def?.displayProperties?.hasIcon?`<img src="https://www.bungie.net${def.displayProperties.icon}" />`:'';
+    const m = getMark(a.itemInstanceId);
+    const markDot = m?`<div class="mark-indicator mark-${m}"></div>`:'';
+    const key = 'ag_'+(aKeyIdx++);
+    // Clicking any piece opens compare with ALL pieces in this slot
+    gridClickMap[key] = {instanceIds: allSlotIds, type:'armor', scrollTo: a.itemInstanceId};
+    return `<div class="grid-item" data-gkey="${key}">
+      <div class="grid-item-icon">${icon}${markDot}</div>
+      <div class="grid-item-name">${name}</div>
+    </div>`;
+  }).join('');
+  const armorGridEl = document.getElementById('armorItemGrid');
+  armorGridEl.innerHTML = `
+    <div class="item-grid-section">
+      <div class="item-grid-title">${slot} <span style="color:var(--text-dim);font-size:10px;margin-left:4px;">${armor.length} items</span>
+        <button style="margin-left:12px;background:var(--accent);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;cursor:pointer;" id="compareAllArmorBtn">Compare All</button>
+      </div>
+      <div class="item-grid">${gridHtml}</div>
+    </div>`;
+  armorGridEl.querySelectorAll('.grid-item').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const entry = gridClickMap[el.dataset.gkey];
+      openCompare(entry.instanceIds, entry.type);
+    });
+  });
+  armorGridEl.querySelector('#compareAllArmorBtn')?.addEventListener('click', ()=>{
+    openCompare(allSlotIds, 'armor');
+  });
+}
+
+// ===================== COMPARE =====================
+
+// Armor compare sort: up to 3 levels
+let armorSort = [
+  {stat:'power', dir:-1},
+  {stat:'none',  dir:-1},
+  {stat:'none',  dir:-1}
+];
+// Weapon stats toggle (per compare session)
+let showWeaponStats = false;
+// Armor base-only toggle
+let showBaseStats = false;
+
+// Plug column label mapping
+const PLUG_COL_ORDER = ['barrels','magazines','perks','traits'];
+const PLUG_COL_LABELS = {
+  barrels:'Barrel', magazines:'Magazine',
+  perks:'Perk 1', traits:'Perk'
+};
+// Excluded slot types (same for all rolls, not useful to compare)
+const PLUG_COL_EXCLUDE = ['intrinsics','frames','origins','masterworks','mods','catalysts','trackers'];
+function plugColLabel(identifier) {
+  for (const key of PLUG_COL_ORDER) {
+    if (identifier.includes(key)) return PLUG_COL_LABELS[key]||key;
+  }
+  return null;
+}
+function plugColKey(identifier) {
+  // Exclude non-useful columns
+  for (const ex of PLUG_COL_EXCLUDE) {
+    if (identifier.includes(ex)) return null;
+  }
+  for (const key of PLUG_COL_ORDER) {
+    if (identifier.includes(key)) return key;
+  }
+  return null;
+}
+
+function openCompare(instanceIds, type) {
+  if (type==='armor') armorSort = [{stat:'power',dir:-1},{stat:'none',dir:-1},{stat:'none',dir:-1}];
+  showWeaponStats = false;
+  showBaseStats = false;
+  renderCompare(instanceIds, type);
+  document.getElementById('compareOverlay').classList.add('open');
+}
+
+function closeCompare() {
+  document.getElementById('compareOverlay').classList.remove('open');
+}
+
+function sortedItems(items, type) {
+  return [...items].sort((a,b)=>{
+    if (type==='armor') {
+      for (const s of armorSort) {
+        if (s.stat==='none') continue;
+        let av,bv;
+        if (s.stat==='power') { av=a.inst?.primaryStat?.value||0; bv=b.inst?.primaryStat?.value||0; }
+        else {
+          const h=Number(s.stat);
+          if (showBaseStats) {
+            av=getBaseStat(a.item,h); bv=getBaseStat(b.item,h);
+          } else {
+            av=a.stats?.stats?.[h]?.value||0; bv=b.stats?.stats?.[h]?.value||0;
+          }
+        }
+        if (av!==bv) return (bv-av)*s.dir;
+      }
+      return 0;
+    } else {
+      return (b.inst?.primaryStat?.value||0)-(a.inst?.primaryStat?.value||0);
+    }
+  });
+}
+
+// Get base armor stat from item definition investmentStats (no masterwork/mods)
+function getBaseStat(item, statHash) {
+  if (!item) return 0;
+  const def = getItemDef(item.itemHash);
+  if (!def?.investmentStats) return 0;
+  const entry = def.investmentStats.find(s=>s.statTypeHash===statHash);
+  return entry?.value||0;
+}
+
+function getBaseStatTotal(item) {
+  if (!item) return 0;
+  return ARMOR_STAT_HASHES.reduce((sum,h)=>sum+getBaseStat(item,h),0);
+}
+
+function renderCompare(instanceIds, type) {
+  const items = instanceIds.map(id=>{
+    const item = allItems.find(i=>i.itemInstanceId===id);
+    return {item, inst:instanceData[id], sockets:socketData[id], stats:statsData[id]};
+  }).filter(x=>x.item);
+  if (!items.length) return;
+
+  const def0  = getItemDef(items[0].item.itemHash);
+  const name0 = def0?.displayProperties.name||'Item';
+  const sorted = sortedItems(items, type);
+  const gridStyle = `grid-template-columns:1fr`;
+
+  // ---- ARMOR SORT UI ----
+  let controlsHtml = '';
+  if (type==='armor') {
+    const statOptions = [
+      {val:'none', label:'—'},
+      {val:'power', label:'Power'},
+      ...ARMOR_STAT_HASHES.map(h=>({val:String(h), label:ARMOR_STAT_NAMES[h]}))
+    ];
+    const makeSelect = (idx) => {
+      const cur = armorSort[idx].stat;
+      const opts = statOptions.map(o=>`<option value="${o.val}" ${cur===o.val?'selected':''}>${o.label}</option>`).join('');
+      const dir  = armorSort[idx].dir;
+      return `<select class="armor-sort-sel" data-idx="${idx}" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:'Barlow',sans-serif;font-size:12px;padding:4px 8px;outline:none;">${opts}</select>
+        <button class="sort-dir-btn" data-idx="${idx}" style="background:var(--surface);border:1px solid var(--border2);color:var(--accent);font-size:11px;padding:4px 8px;cursor:pointer;">${dir===1?'↑':'↓'}</button>`;
+    };
+    const baseToggle = `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;margin-left:auto;">
+      <input type="checkbox" id="baseStatsToggle" ${showBaseStats?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
+      Base stats only
+    </label>`;
+    controlsHtml = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:1rem;padding:10px 12px;background:var(--surface);border:1px solid var(--border2);">
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Sort 1</span>${makeSelect(0)}
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-left:6px;">Sort 2</span>${makeSelect(1)}
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-left:6px;">Sort 3</span>${makeSelect(2)}
+      ${baseToggle}
+    </div>`;
+  } else {
+    // Weapon stats toggle
+    controlsHtml = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:1rem;padding:8px 12px;background:var(--surface);border:1px solid var(--border2);">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+        <input type="checkbox" id="weaponStatsToggle" ${showWeaponStats?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
+        Show base stats
+      </label>
+    </div>`;
+  }
+
+  // ---- PER-ITEM CARDS ----
+  const itemsHtml = sorted.map(({item,inst,sockets,stats})=>{
+    const def   = getItemDef(item.itemHash);
+    const name  = def?.displayProperties.name||'Item';
+    const icon  = def?.displayProperties?.hasIcon?`<img src="https://www.bungie.net${def.displayProperties.icon}" />`:'';
+    const power = inst?.primaryStat?.value||'—';
+    const iid   = item.itemInstanceId;
+    const mark  = getMark(iid);
+    const loc   = item.loc||'';
+
+    // ---- WEAPON PERKS BY COLUMN ----
+    let perksHtml = '';
+    if (type==='weapon' && sockets?.sockets) {
+      // DEBUG: log first weapon's socket data
+      if (sorted.indexOf(sorted.find(x=>x.item.itemInstanceId===iid)) === 0) {
+        // Dump raw socket objects for barrel and trait sockets
+        console.log('[D2 RAW] socket[1] full:', JSON.stringify(sockets.sockets[1]));
+        console.log('[D2 RAW] socket[3] full:', JSON.stringify(sockets.sockets[3]));
+        console.log('[D2 SOCKETS] instanceId:', iid);
+        console.log('[D2 SOCKETS] socket count:', sockets.sockets.length);
+        const itemDefDbg = getItemDef(item.itemHash);
+        sockets.sockets.forEach((s,i)=>{
+          const pd = getItemDef(s.plugHash);
+          const se = itemDefDbg?.sockets?.socketEntries?.[i];
+          const psHash = se?.randomizedPlugSetHash || se?.reusablePlugSetHash || 'none';
+          const ps = psHash!=='none' ? (manifestPlugSets[psHash]||manifestPlugSets[psHash>>>0]) : null;
+          const psCount = ps?.reusablePlugItems?.length || 0;
+          const seDbg = itemDefDbg?.sockets?.socketEntries?.[i];
+          const randH = seDbg?.randomizedPlugSetHash||'none';
+          const reuseH = seDbg?.reusablePlugSetHash||'none';
+          const avail = reusablePlugsData;
+          const psDbg = randH!=='none'?(manifestPlugSets[randH]||manifestPlugSets[randH>>>0]):null;
+          const possible = psDbg?.reusablePlugItems?.length||0;
+          const available = psDbg?.reusablePlugItems?.filter(p=>avail instanceof Set ? avail.has(p.plugItemHash)||p.plugItemHash===s.plugHash : false).length||0;
+          console.log(`  socket[${i}] name:${pd?.displayProperties?.name||'?'} randHash:${randH} possible:${possible} available:${available}`);
+        });
+      }
+      const cols = [];
+      // Use socket index to preserve column order; trait slots get separate columns
+      sockets.sockets.forEach((s, sockIdx)=>{
+        if (!s.plugHash) return;
+        const equippedDef = getItemDef(s.plugHash);
+        if (!equippedDef) return;
+        const ident = equippedDef.plug?.plugCategoryIdentifier||'';
+
+        // Skip excluded slot types
+        const excluded = ['intrinsics','frames','origins','masterworks','mods','catalysts','trackers','shader','ornaments','ghosts','holster','auras','finishers','emotes'];
+        if (excluded.some(ex=>ident.includes(ex))) return;
+
+        // Determine column type
+        let colLabel = null;
+        if (ident.includes('barrels')) colLabel = 'Barrel';
+        else if (ident.includes('magazines') || ident.includes('batteries') || ident.includes('guards')) colLabel = 'Magazine';
+        else if (ident.includes('traits')) colLabel = 'Perk';
+        else if (ident.includes('perks')) colLabel = 'Perk';
+        else return; // skip anything else
+
+        // Collect rolled options for this specific item instance
+        // Component 308 (reusablePlugs) gives exactly the perks this item rolled with
+        const allHashes = [];
+        const seen = new Set();
+        // Equipped first
+        if (!seen.has(s.plugHash)) { seen.add(s.plugHash); allHashes.push(s.plugHash); }
+
+        // Get all possible plugs for this socket from manifest
+        const itemDefLookup = getItemDef(item.itemHash);
+        const sockEntry = itemDefLookup?.sockets?.socketEntries?.[sockIdx];
+        const randHash = sockEntry?.randomizedPlugSetHash;
+        const reuseHash = sockEntry?.reusablePlugSetHash;
+
+        const possibleHashes = [];
+        [randHash, reuseHash].forEach(psHash=>{
+          if (!psHash) return;
+          const ps = manifestPlugSets[psHash] || manifestPlugSets[psHash>>>0] || manifestPlugSets[String(psHash)];
+          if (ps?.reusablePlugItems) {
+            ps.reusablePlugItems.forEach(p=>{
+              if (!possibleHashes.includes(p.plugItemHash)) possibleHashes.push(p.plugItemHash);
+            });
+          }
+        });
+
+        // Filter based on available data:
+        // - If OAuth + component 306: use exact per-item rolls
+        // - Otherwise: use flat profile plugs set (less accurate)
+        let rolledHashes;
+        if (reusablePlugsData._perItem) {
+          // Per-item exact rolls from component 306
+          const itemPlugs = reusablePlugsData[iid];
+          const sockSet = itemPlugs?.[sockIdx] || itemPlugs?.[String(sockIdx)] || new Set();
+          rolledHashes = possibleHashes.filter(h => h===s.plugHash || sockSet.has(h));
+        } else {
+          // Flat fallback
+          rolledHashes = possibleHashes.filter(h => h===s.plugHash || reusablePlugsData.has(h));
+        }
+
+        if (rolledHashes.length > 1) {
+          rolledHashes.forEach(h=>{
+            if (!seen.has(h)) { seen.add(h); allHashes.push(h); }
+          });
+        } else {
+          // Fallback: just show equipped + reusablePlugHashes
+          if (!seen.has(s.plugHash)) { seen.add(s.plugHash); allHashes.push(s.plugHash); }
+          (s.reusablePlugHashes||[]).forEach(h=>{
+            if (!seen.has(h)) { seen.add(h); allHashes.push(h); }
+          });
+        }
+
+        // Only include hashes that have valid defs with actual names
+        const validHashes = allHashes.filter(h=>{
+          const d = getItemDef(h);
+          if (!d) return false;
+          const n = d.displayProperties?.name||'';
+          if (!n || n.toLowerCase().includes('empty') || n.toLowerCase().includes('default')) return false;
+          return true;
+        });
+
+        if (validHashes.length === 0) return;
+        cols.push({label: colLabel, equippedHash: s.plugHash, hashes: validHashes});
+      });
+
+      // Rename duplicate "Perk" columns to Perk 1, Perk 2, etc.
+      let perkNum = 0;
+      cols.forEach(c=>{ if(c.label==='Perk') { perkNum++; if(perkNum>1) c.label=`Perk ${perkNum}`; else c.label='Perk 1'; } });
+
+      if (cols.length) {
+        perksHtml = `<div class="perks-section" style="margin-top:8px;">
+          <div style="display:grid;grid-template-columns:repeat(${cols.length},1fr);gap:6px;">
+            ${cols.map(col=>`
+              <div style="background:var(--surface2);border:1px solid var(--border);padding:8px 6px;">
+                <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px;">${col.label}</div>
+                ${col.hashes.map(h=>{
+                  const pd = getItemDef(h);
+                  const pname = pd?.displayProperties?.name||'';
+                  const isEquipped = h===col.equippedHash;
+                  return `<div style="padding:3px 0;background:${isEquipped?'rgba(200,168,75,0.08)':'transparent'};border-left:${isEquipped?'2px solid var(--accent)':'2px solid transparent'};padding-left:5px;margin-bottom:2px;">
+                    <span style="font-size:${isEquipped?12:11}px;color:${isEquipped?'var(--accent)':'var(--text)'};font-weight:${isEquipped?600:400};line-height:1.4;display:block;">${pname}</span>
+                  </div>`;
+                }).join('')}
+              </div>`).join('')}
+          </div>
+        </div>`;
+      }
+    }
+
+    // ---- STATS ----
+    let statsHtml = '';
+    if (type==='weapon' && showWeaponStats && stats?.stats) {
+      const entries = WEAPON_STAT_HASHES
+        .map(h=>({hash:h,name:WEAPON_STAT_NAMES[h],val:stats.stats[h]?.value}))
+        .filter(s=>s.val!==undefined&&s.val>0);
+      if (entries.length) {
+        statsHtml = `<div class="stats-section" style="margin-top:8px;">
+          <div class="perks-label">Base Stats</div>
+          ${entries.map(s=>`<div class="stat-row">
+            <div class="stat-row-label">${s.name}</div>
+            <div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:${Math.min(s.val,100)}%"></div></div>
+            <div class="stat-row-val">${s.val}</div>
+          </div>`).join('')}
+        </div>`;
+      }
+    } else if (type==='armor') {
+      const maxPerStat = {};
+      items.forEach(({item:it,stats:st})=>{
+        ARMOR_STAT_HASHES.forEach(h=>{
+          const v = showBaseStats ? getBaseStat(it,h) : (st?.stats?.[h]?.value||0);
+          if (!maxPerStat[h]||v>maxPerStat[h]) maxPerStat[h]=v;
+        });
+      });
+      const entries = ARMOR_STAT_HASHES.map(h=>{
+        const val = showBaseStats ? getBaseStat(item,h) : (stats?.stats?.[h]?.value||0);
+        return {hash:h, name:ARMOR_STAT_NAMES[h], val};
+      }).filter(s=>s.val>0);
+      const total = showBaseStats ? getBaseStatTotal(item) : entries.reduce((a,s)=>a+s.val,0);
+      if (entries.length) {
+        statsHtml = `<div class="stats-section">
+          <div class="perks-label">Stats${showBaseStats?' <span style="font-size:10px;color:var(--text-dim)">(base)</span>':''} <span style="color:var(--accent);font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;margin-left:8px;">Total: ${total}</span></div>
+          ${entries.map(s=>{
+            const isBest = maxPerStat[s.hash]===s.val && items.length>1 && s.val>0;
+            return `<div class="stat-row">
+              <div class="stat-row-label" style="${isBest?'color:var(--fav);':''}">${s.name}${isBest?' ★':''}</div>
+              <div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:${Math.min(s.val,100)}%;${isBest?'background:var(--fav);':''}"></div></div>
+              <div class="stat-row-val" style="${isBest?'color:var(--fav);':''}">${s.val}</div>
+            </div>`;
+          }).join('')}
+        </div>`;
+      }
+    }
+
+    return `<div class="compare-item" id="citem-${iid}">
+      <div class="compare-item-header" style="display:flex;align-items:flex-start;gap:12px;">
+        <div class="compare-item-icon">${icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div class="compare-item-name">${name}</div>
+          <div class="compare-item-meta">${def?.itemTypeAndTierDisplayName||''} <span class="loc-badge">${loc}${item.equipped?' · Equipped':''}</span></div>
+          <div class="compare-item-power">${power}</div>
+        </div>
+        <div class="mark-row" data-iid="${iid}" data-type="${type}" style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+          <div style="display:flex;gap:3px;">
+            <button class="mark-btn fav ${mark==='fav'?'active':''}" data-mark="fav" style="padding:4px 8px;font-size:11px;">★ Fav</button>
+            <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:4px 8px;font-size:11px;">Junk</button>
+            <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:4px 8px;font-size:11px;">Infuse</button>
+            <button class="mark-btn clear-btn" data-mark="clear" style="padding:4px 8px;font-size:11px;">✕</button>
+          </div>
+        </div>
+      </div>
+      ${perksHtml}
+      ${statsHtml}
+    </div>`;
+  }).join('');
+
+  document.getElementById('compareContent').innerHTML = `
+    <div class="compare-title">${name0} — ${items.length > 1 ? items.length + ' copies' : 'Item Detail'}</div>
+    ${controlsHtml}
+    <div class="compare-grid" style="${gridStyle}">${itemsHtml}</div>`;
+
+  // Armor sort selects
+  document.querySelectorAll('#compareContent .armor-sort-sel').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const idx = Number(sel.dataset.idx);
+      armorSort[idx].stat = sel.value;
+      renderCompare(instanceIds, type);
+    });
+  });
+  document.querySelectorAll('#compareContent .sort-dir-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const idx = Number(btn.dataset.idx);
+      armorSort[idx].dir *= -1;
+      renderCompare(instanceIds, type);
+    });
+  });
+
+  // Base stats toggle
+  const baseToggleEl = document.getElementById('baseStatsToggle');
+  if (baseToggleEl) baseToggleEl.addEventListener('change', ()=>{
+    showBaseStats = baseToggleEl.checked;
+    renderCompare(instanceIds, type);
+  });
+
+  // Weapon stats toggle
+  const weaponStatsEl = document.getElementById('weaponStatsToggle');
+  if (weaponStatsEl) weaponStatsEl.addEventListener('change', ()=>{
+    showWeaponStats = weaponStatsEl.checked;
+    renderCompare(instanceIds, type);
+  });
+
+  // Mark buttons
+  document.querySelectorAll('#compareContent .mark-row').forEach(row=>{
+    const iid = row.dataset.iid;
+    const t   = row.dataset.type;
+    row.querySelectorAll('.mark-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const m = btn.dataset.mark;
+        setMark(iid, m==='clear'?null:m, t, instanceIds);
+      });
+    });
+  });
+}
+
+function setMark(instanceId, mark, type, instanceIds) {
+  saveMark(instanceId, mark);
+  renderCompare(instanceIds, type);
+  if (type==='weapon' && activeWeaponBHash && activeWeaponType) {
+    selectWeaponType(activeWeaponBHash, activeWeaponType);
+  } else if (type==='armor' && activeArmorClass!==null && activeArmorSlot) {
+    selectArmorSlot(activeArmorClass, activeArmorSlot);
+  }
+}
+
+function resortCompare(sort, instanceIds, type) {
+  compareSort = sort;
+  renderCompare(instanceIds, type);
+}
+
+// ===================== FAVORITES & JUNK TABS =====================
+
+function getDimDone(iid) { return !!JSON.parse(localStorage.getItem('d2dim')||'{}')[iid]; }
+function setDimDone(iid, val) {
+  const d = JSON.parse(localStorage.getItem('d2dim')||'{}');
+  if (val) d[iid]=1; else delete d[iid];
+  localStorage.setItem('d2dim', JSON.stringify(d));
+}
+
+const openNameAccordions = {junk:{}, favorites:{}};
+const markTabSort = {junk:{col:'power',dir:-1}, favorites:{col:'power',dir:-1}};
+
+function buildMarkRows(markType) {
+  return allItems
+    .filter(i=>getMark(i.itemInstanceId)===markType && i.itemInstanceId)
+    .map(item=>{
+      const def   = getItemDef(item.itemHash);
+      const inst  = instanceData[item.itemInstanceId];
+      const socks = socketData[item.itemInstanceId];
+      const stats = statsData[item.itemInstanceId];
+      const name  = def?.displayProperties?.name||'Unknown';
+      const typeLabel = def?.itemTypeDisplayName||'';
+      const tier  = def?.inventory?.tierType||0;
+      const rk    = RARITY[tier]||'common';
+      const power = inst?.primaryStat?.value||0;
+      const effectiveBucket = getEffectiveBucketHash(item);
+      const isWeapon = WEAPON_BUCKETS.has(effectiveBucket);
+      const isArmor  = ARMOR_BUCKETS.has(effectiveBucket);
+      const category = isWeapon?'Weapon':isArmor?'Armor':'Other';
+      const slotName = isWeapon
+        ? (WEAPON_BUCKET_NAMES[effectiveBucket]||'Weapon')
+        : (ARMOR_BUCKET_NAMES[effectiveBucket]||'Armor');
+      const icon = def?.displayProperties?.hasIcon ? def.displayProperties.icon : null;
+      const perks = [];
+      if (socks?.sockets) {
+        socks.sockets.forEach(s=>{
+          if (!s.plugHash) return;
+          const pd = getItemDef(s.plugHash);
+          if (!pd) return;
+          const plug = pd.plug?.plugCategoryIdentifier||'';
+          if (plug.includes('traits')||plug.includes('perks')||plug.includes('frames')||plug.includes('intrinsics'))
+            perks.push({name:pd.displayProperties?.name, icon:pd.displayProperties?.hasIcon?pd.displayProperties.icon:null});
+        });
+      }
+      const armorStats = {};
+      if (stats?.stats) ARMOR_STAT_HASHES.forEach(h=>{ if(stats.stats[h]?.value) armorStats[h]=stats.stats[h].value; });
+      return {item, name, typeLabel, tier, rk, power, category, slotName, icon, perks, armorStats,
+              iid:item.itemInstanceId, loc:item.loc||'', equipped:item.equipped||false};
+    });
+}
+
+function renderMarkTab(markType) {
+  const panelId = markType==='junk'?'panel-junk':'panel-favorites';
+  const panel   = document.getElementById(panelId);
+  const emptyLabel = markType==='junk'?'No items marked as junk yet.':'No items marked as favorite yet.';
+  const accentColor = markType==='junk'?'var(--junk)':'var(--fav)';
+
+  const rows = buildMarkRows(markType);
+  if (!rows.length) {
+    panel.innerHTML=`<div class="no-junk">${emptyLabel}<br><span style="font-size:12px;color:var(--text-dim);margin-top:6px;display:block;">Mark items in the Weapons or Armor tabs.</span></div>`;
+    return;
+  }
+
+  const slotMap = {};
+  rows.forEach(r=>{
+    const key = r.category+':'+r.slotName;
+    if (!slotMap[key]) slotMap[key]={label:r.slotName, category:r.category, names:{}};
+    if (!slotMap[key].names[r.name]) slotMap[key].names[r.name]=[];
+    slotMap[key].names[r.name].push(r);
+  });
+
+  const slotOrder = ['Weapon:Kinetic','Weapon:Energy','Weapon:Heavy',
+                     'Armor:Helmet','Armor:Gauntlets','Armor:Chest','Armor:Legs','Armor:Class Item'];
+  const orderedKeys = slotOrder.filter(k=>slotMap[k])
+    .concat(Object.keys(slotMap).filter(k=>!slotOrder.includes(k)));
+
+  const sort = markTabSort[markType];
+
+  function sortRows(arr) {
+    return [...arr].sort((a,b)=>{
+      const da=getDimDone(a.iid)?1:0, db=getDimDone(b.iid)?1:0;
+      if (da!==db) return da-db;
+      if (sort.col==='power') return (b.power-a.power)*sort.dir;
+      if (sort.col==='name') return a.name.localeCompare(b.name)*sort.dir;
+      if (sort.col==='loc') return a.loc.localeCompare(b.loc)*sort.dir;
+      const h = Number(sort.col);
+      return ((b.armorStats[h]||0)-(a.armorStats[h]||0))*sort.dir;
+    });
+  }
+
+  function thHtml(col, label) {
+    const active = sort.col===col;
+    const arrow  = active?(sort.dir===1?'\u2191':'\u2193'):'';
+    return `<th class="${active?'sorted':''}" data-col="${col}" data-tab="${markType}">${label}<span class="sort-arrow">${arrow}</span></th>`;
+  }
+
+  function markBtns(r) {
+    const m = getMark(r.iid);
+    return `<div style="display:flex;align-items:center;gap:3px;">
+      <button class="mark-btn fav ${m==='fav'?'active':''}" data-iid="${r.iid}" data-mark="fav" data-tab="${markType}" data-pending="">&#9733;</button>
+      <button class="mark-btn junk ${m==='junk'?'active':''}" data-iid="${r.iid}" data-mark="junk" data-tab="${markType}" data-pending="">J</button>
+      <button class="mark-btn infuse ${m==='infuse'?'active':''}" data-iid="${r.iid}" data-mark="infuse" data-tab="${markType}" data-pending="">&#9889;</button>
+      <button class="mark-btn clear-btn" data-iid="${r.iid}" data-mark="clear" data-tab="${markType}" data-pending="">&#215;</button>
+      <button class="confirm-mark-btn" data-iid="${r.iid}" data-tab="${markType}" style="display:none;background:var(--fav);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;cursor:pointer;">OK</button>
+    </div>`;
+  }
+
+  function rowHtml(r) {
+    const done = getDimDone(r.iid);
+    const armorCells = r.category==='Armor'
+      ? ARMOR_STAT_HASHES.map(h=>`<td style="font-family:'Barlow Condensed',sans-serif;font-size:13px;color:${r.armorStats[h]?'var(--text)':'var(--text-dim)'};">${r.armorStats[h]||'&#8212;'}</td>`).join('')
+      : '';
+    return `<tr class="${done?'done-in-dim':''}" data-iid="${r.iid}">
+      <td class="dim-check-cell"><input type="checkbox" class="dim-checkbox" ${done?'checked':''} data-iid="${r.iid}" data-tab="${markType}" /></td>
+      <td><div class="junk-name-cell">
+        <div class="rarity-dot ${r.rk}"></div>
+        <div class="junk-icon">${r.icon?`<img src="https://www.bungie.net${r.icon}" />`:'?'}</div>
+        <div><div class="junk-item-name">${r.name}</div><div class="junk-item-sub">${r.typeLabel}</div></div>
+      </div></td>
+      <td class="power-cell">${r.power||'&#8212;'}</td>
+      <td class="loc-cell">${r.loc}${r.equipped?'<span class="equipped-tag">Equipped</span>':''}</td>
+      <td><div class="perks-cell">${r.perks.slice(0,3).map(p=>`<div class="perk-mini">${p.icon?`<img src="https://www.bungie.net${p.icon}" />`:''}
+        <span>${p.name||''}</span></div>`).join('')}</div></td>
+      ${armorCells}
+      <td><div style="display:flex;gap:3px;">${markBtns(r)}</div></td>
+    </tr>`;
+  }
+
+  function armorStatHeaders(category) {
+    if (category!=='Armor') return '';
+    return ARMOR_STAT_HASHES.map(h=>thHtml(String(h), ARMOR_STAT_NAMES[h])).join('');
+  }
+
+  const slotsHtml = orderedKeys.map(key=>{
+    const slot = slotMap[key];
+    const totalItems = Object.values(slot.names).flat().length;
+    const nameAccs = Object.entries(slot.names).map(([name, nameRows])=>{
+      const def = getItemDef(nameRows[0].item.itemHash);
+      const icon = def?.displayProperties?.hasIcon?def.displayProperties.icon:null;
+      const isOpen = openNameAccordions[markType][key+':'+name];
+      const sorted = sortRows(nameRows);
+      const doneCount = nameRows.filter(r=>getDimDone(r.iid)).length;
+      const rk = nameRows[0].rk;
+      return `<div class="name-accordion" data-namekey="${CSS.escape(key+':'+name)}">
+        <div class="name-accordion-header ${isOpen?'open':''}" data-rawkey="${encodeURIComponent(key+':'+name)}" data-tab="${markType}">
+          <div class="rarity-bar rarity-${rk}" style="width:3px;align-self:stretch;flex-shrink:0;margin-right:4px;"></div>
+          <div class="name-acc-icon">${icon?`<img src="https://www.bungie.net${icon}" />`:'?'}</div>
+          <span class="name-acc-title">${name}</span>
+          <span class="name-acc-count">${nameRows.length} item${nameRows.length>1?'s':''} ${doneCount>0?'&#183; <span style="color:var(--accent)">'+doneCount+' done</span>':''}</span>
+          <span class="name-acc-arrow">&#9660;</span>
+        </div>
+        <div class="name-accordion-body ${isOpen?'open':''}">
+          <table class="junk-table">
+            <thead><tr>
+              <th style="width:32px;"></th>
+              ${thHtml('name','Item')}
+              ${thHtml('power','Power')}
+              ${thHtml('loc','Location')}
+              <th>Perks</th>
+              ${armorStatHeaders(slot.category)}
+              <th>Mark</th>
+            </tr></thead>
+            <tbody>${sorted.map(rowHtml).join('')}</tbody>
+          </table>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="mark-group-header">${slot.category} &#183; ${slot.label} <span style="color:var(--text-dim);font-size:10px;">${totalItems} items</span></div>${nameAccs}`;
+  }).join('');
+
+  const doneCount = rows.filter(r=>getDimDone(r.iid)).length;
+  panel.innerHTML = `
+    <div class="mark-controls">
+      <span style="font-size:13px;color:var(--text-muted);">${rows.length} items &#183; <span style="color:${accentColor}">${doneCount} done in DIM</span></span>
+      <button class="unmark-btn" id="clearDimBtn" data-tab="${markType}" style="margin-left:auto;">Clear all DIM checks</button>
+    </div>
+    ${slotsHtml}`;
+
+  panel.querySelectorAll('.name-accordion-header').forEach(hdr=>{
+    hdr.addEventListener('click', ()=>{
+      const rawKey = decodeURIComponent(hdr.dataset.rawkey);
+      const tab = hdr.dataset.tab;
+      openNameAccordions[tab][rawKey] = !openNameAccordions[tab][rawKey];
+      renderMarkTab(tab);
+    });
+  });
+
+  panel.querySelectorAll('.junk-table th[data-col]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const tab = th.dataset.tab;
+      const col = th.dataset.col;
+      const s = markTabSort[tab];
+      if (s.col===col) s.dir*=-1; else { s.col=col; s.dir=-1; }
+      renderMarkTab(tab);
+    });
+  });
+
+  panel.querySelectorAll('.dim-checkbox').forEach(cb=>{
+    cb.addEventListener('change', ()=>{ setDimDone(cb.dataset.iid, cb.checked); renderMarkTab(cb.dataset.tab); });
+  });
+
+  panel.querySelectorAll('.mark-btn[data-iid]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const iid = btn.dataset.iid;
+      const tab = btn.dataset.tab;
+      const newMark = btn.dataset.mark==='clear'?null:btn.dataset.mark;
+      // Show pending state - highlight selected btn, show confirm
+      const row = btn.closest('tr');
+      if (row) {
+        row.querySelectorAll('.mark-btn[data-iid]').forEach(b=>b.classList.remove('pending-select'));
+        btn.classList.add('pending-select');
+        btn.dataset.pending = newMark===null?'clear':newMark;
+        const confirmBtn = row.querySelector('.confirm-mark-btn');
+        if (confirmBtn) confirmBtn.style.display='block';
+      }
+    });
+  });
+
+  panel.querySelectorAll('.confirm-mark-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const iid = btn.dataset.iid;
+      const tab = btn.dataset.tab;
+      const row = btn.closest('tr');
+      const pendingBtn = row?.querySelector('.mark-btn.pending-select');
+      if (!pendingBtn) return;
+      const m = pendingBtn.dataset.pending;
+      saveMark(iid, m==='clear'?null:m);
+      renderMarkTab(tab);
+    });
+  });
+
+  panel.querySelector('#clearDimBtn')?.addEventListener('click', ()=>{
+    rows.forEach(r=>setDimDone(r.iid,false));
+    renderMarkTab(markType);
+  });
+}
+
+// ===================== INIT =====================
+(async function init() {
+  // Restore saved API key from localStorage
+  const savedKey = localStorage.getItem('d2_pre_oauth_key') || '65dad06c7ac04b90ba4096ecf0c9f6f5';
+  if (savedKey) document.getElementById('apiKey').value = savedKey;
+  updateOAuthStatus();
+  // Handle OAuth callback redirect
+  if (window.location.search.includes('code=')) {
+    await handleOAuthCallback();
+    // Auto-search if we have saved credentials
+    const savedKey = localStorage.getItem('d2_pre_oauth_key');
+    const savedId  = localStorage.getItem('d2_pre_oauth_id');
+    if (savedKey && savedId) {
+      document.getElementById('apiKey').value = savedKey;
+      document.getElementById('bungieId').value = savedId;
+      searchPlayer();
+    }
+  }
+})();
+
+// ===================== KEYBOARD =====================
+document.addEventListener('keydown', e=>{ if (e.key==='Escape') closeCompare(); });
+document.getElementById('bungieId').addEventListener('keydown',e=>{ if(e.key==='Enter') searchPlayer(); });
+document.getElementById('apiKey').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('bungieId').focus(); });
+document.getElementById('compareOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeCompare(); });
+</script>
+</body>
+</html>
+.profile-name span { color:var(--accent); }
+.profile-meta { font-size:12px; color:var(--text-muted); margin-top:2px; }
+.platform-badge { display:inline-block; font-size:10px; padding:2px 7px; background:var(--surface2); border:1px solid var(--border2); color:var(--text-muted); margin-left:8px; vertical-align:middle; }
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:6px; margin-bottom:.75rem; }
+.stat-card { background:var(--surface); border:1px solid var(--border); padding:10px 12px; }
+.stat-label { font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-dim); margin-bottom:4px; }
+.stat-value { font-family:'Barlow Condensed',sans-serif; font-size:24px; font-weight:700; color:var(--accent); line-height:1; }
+
+/* Character cards */
+.chars-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; }
+.char-card { background:var(--surface); border:1px solid var(--border); padding:14px; position:relative; overflow:hidden; }
+.char-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; }
+.char-card.titan::before { background:var(--titan); }
+.char-card.hunter::before { background:var(--hunter); }
+.char-card.warlock::before { background:var(--warlock); }
+.char-class { font-family:'Barlow Condensed',sans-serif; font-size:16px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; }
+.char-card.titan .char-class { color:var(--titan); }
+.char-card.hunter .char-class { color:var(--hunter); }
+.char-card.warlock .char-class { color:var(--warlock); }
+.char-race { font-size:11px; color:var(--text-muted); margin-bottom:10px; }
+.char-power { font-family:'Barlow Condensed',sans-serif; font-size:32px; font-weight:700; color:var(--text); line-height:1; }
+.char-power-label { font-size:9px; color:var(--text-dim); letter-spacing:0.08em; text-transform:uppercase; margin-top:2px; margin-bottom:8px; }
+.char-time { font-size:11px; color:var(--text-dim); }
+.recent-badge { display:inline-block; font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; background:rgba(200,168,75,0.12); color:var(--accent); padding:2px 6px; margin-bottom:6px; }
+
+/* Equipped items */
+.equipped-section { margin-top:10px; }
+.eq-title { font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-dim); margin-bottom:5px; display:flex; align-items:center; gap:6px; }
+.eq-title::after { content:''; flex:1; height:1px; background:var(--border); }
+.item-row { display:flex; align-items:center; gap:8px; padding:5px 8px; background:var(--surface2); border:1px solid var(--border); margin-bottom:3px; }
+.item-icon { width:32px; height:32px; flex-shrink:0; background:var(--surface); overflow:hidden; }
+.item-icon img { width:100%; height:100%; object-fit:cover; display:block; }
+.item-icon-ph { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--text-dim); }
+.item-info { flex:1; min-width:0; }
+.item-name { font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.item-type { font-size:10px; color:var(--text-dim); }
+.item-power { font-family:'Barlow Condensed',sans-serif; font-size:13px; font-weight:600; color:var(--text-muted); flex-shrink:0; }
+.rarity-bar { width:2px; align-self:stretch; flex-shrink:0; }
+.rarity-exotic { background:var(--exotic-col); }
+.rarity-legendary { background:var(--legendary-col); }
+.rarity-rare { background:var(--rare-col); }
+.rarity-uncommon { background:#366f3b; }
+.rarity-common { background:#888; }
+
+/* ===== WEAPONS / ARMOR TAB ===== */
+.inv-tab { }
+.inv-controls { display:flex; align-items:center; gap:10px; margin-bottom:1rem; flex-wrap:wrap; }
+.toggle-group { display:flex; gap:4px; }
+.toggle-btn { font-family:'Barlow Condensed',sans-serif; font-size:10px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; padding:5px 12px; cursor:pointer; border:1px solid var(--border2); background:var(--surface); color:var(--text-muted); transition:all .15s; }
+.toggle-btn:hover { color:var(--text); background:var(--surface2); }
+.toggle-btn.active { background:var(--accent); color:#0a0c0f; border-color:var(--accent); }
+.toggle-btn.exotic.active { background:var(--exotic-col); border-color:var(--exotic-col); }
+.toggle-btn.legendary.active { background:var(--legendary-col); border-color:var(--legendary-col); }
+
+/* Accordion */
+.accordion { margin-bottom:6px; }
+.accordion-header { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--surface); border:1px solid var(--border2); cursor:pointer; user-select:none; transition:background .15s; }
+.accordion-header:hover { background:var(--surface2); }
+.accordion-header.open { border-bottom-color:transparent; }
+.accordion-title { font-family:'Barlow Condensed',sans-serif; font-size:14px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--text); }
+.accordion-count { font-size:11px; color:var(--text-dim); }
+.accordion-arrow { font-size:10px; color:var(--text-dim); transition:transform .2s; }
+.accordion-header.open .accordion-arrow { transform:rotate(180deg); }
+.accordion-body { display:none; background:var(--surface); border:1px solid var(--border2); border-top:none; padding:10px; }
+.accordion-body.open { display:block; }
+
+/* Weapon type pills */
+.type-grid { display:flex; flex-wrap:wrap; gap:6px; }
+.type-pill { font-family:'Barlow Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; padding:6px 14px; background:var(--surface2); border:1px solid var(--border2); cursor:pointer; color:var(--text-muted); transition:all .15s; display:flex; align-items:center; gap:6px; }
+.type-pill:hover { color:var(--text); border-color:var(--border); }
+.type-pill.active { background:var(--surface3); border-color:var(--accent); color:var(--accent); }
+.type-pill .pill-count { font-size:10px; background:var(--surface); padding:1px 5px; color:var(--text-dim); }
+
+/* Item grid */
+.item-grid-section { margin-top:1rem; }
+.item-grid-title { font-family:'Barlow Condensed',sans-serif; font-size:10px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-dim); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+.item-grid-title::after { content:''; flex:1; height:1px; background:var(--border); }
+.item-grid { display:flex; flex-wrap:wrap; gap:8px; }
+.grid-item { width:72px; cursor:pointer; position:relative; transition:transform .15s; }
+.grid-item:hover { transform:scale(1.05); }
+.grid-item.has-dupes .dupe-badge { display:flex; }
+.grid-item-icon { width:72px; height:72px; background:var(--surface2); border:1px solid var(--border2); overflow:hidden; position:relative; }
+.grid-item-icon img { width:100%; height:100%; object-fit:cover; display:block; }
+.grid-item-icon .mark-indicator { position:absolute; bottom:2px; left:2px; width:8px; height:8px; border-radius:50%; }
+.mark-fav { background:var(--fav); }
+.mark-junk { background:var(--junk); }
+.mark-infuse { background:var(--infuse); }
+.dupe-badge { display:none; position:absolute; top:-4px; right:-4px; width:18px; height:18px; background:var(--accent); color:#0a0c0f; font-family:'Barlow Condensed',sans-serif; font-size:11px; font-weight:700; align-items:center; justify-content:center; border-radius:50%; z-index:2; }
+.grid-item-name { font-size:10px; color:var(--text-muted); text-align:center; margin-top:4px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Compare modal */
+.compare-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:100; overflow-y:auto; padding:2rem 1rem; }
+.compare-overlay.open { display:block; }
+.compare-modal { background:var(--bg); border:1px solid var(--border2); max-width:900px; margin:0 auto; padding:1.5rem; position:relative; }
+.compare-close { position:absolute; top:12px; right:12px; background:none; border:1px solid var(--border2); color:var(--text-muted); font-size:16px; width:28px; height:28px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:'Barlow Condensed',sans-serif; }
+.compare-close:hover { color:var(--text); background:var(--surface2); }
+.compare-title { font-family:'Barlow Condensed',sans-serif; font-size:16px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:1rem; color:var(--text); }
+.compare-grid { display:grid; gap:10px; }
+.compare-item { background:var(--surface); border:1px solid var(--border2); padding:14px; position:relative; }
+.compare-item-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.compare-item-icon { width:56px; height:56px; background:var(--surface2); overflow:hidden; flex-shrink:0; }
+.compare-item-icon img { width:100%; height:100%; object-fit:cover; display:block; }
+.compare-item-name { font-family:'Barlow Condensed',sans-serif; font-size:15px; font-weight:700; letter-spacing:0.04em; color:var(--text); }
+.compare-item-meta { font-size:11px; color:var(--text-muted); margin-top:2px; }
+.compare-item-power { font-family:'Barlow Condensed',sans-serif; font-size:20px; font-weight:700; color:var(--accent); margin-top:2px; }
+
+/* Perks */
+.perks-section { margin-bottom:12px; }
+.perks-label { font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-dim); margin-bottom:6px; }
+.perks-list { display:flex; flex-wrap:wrap; gap:5px; }
+.perk-chip { display:flex; align-items:center; gap:5px; background:var(--surface2); border:1px solid var(--border); padding:4px 8px; }
+.perk-chip img { width:16px; height:16px; }
+.perk-name { font-size:11px; color:var(--text); }
+.perk-socket-divider { width:1px; height:16px; background:var(--border2); margin:0 2px; }
+
+/* Stats bar */
+.stats-section { margin-bottom:12px; }
+.stat-row { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.stat-row-label { font-size:11px; color:var(--text-muted); width:80px; flex-shrink:0; text-align:right; }
+.stat-bar-wrap { flex:1; height:4px; background:var(--surface2); }
+.stat-bar-fill { height:100%; background:var(--accent); transition:width .3s; }
+.stat-row-val { font-family:'Barlow Condensed',sans-serif; font-size:12px; font-weight:600; color:var(--text); width:28px; flex-shrink:0; }
+
+/* Mark buttons */
+.mark-row { display:flex; gap:6px; margin-top:10px; }
+.mark-btn { flex:1; font-family:'Barlow Condensed',sans-serif; font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; padding:7px 0; border:1px solid; cursor:pointer; background:transparent; transition:all .15s; }
+.mark-btn.fav { color:var(--fav); border-color:var(--fav); }
+.mark-btn.junk { color:var(--junk); border-color:var(--junk); }
+.mark-btn.infuse { color:var(--infuse); border-color:var(--infuse); }
+.mark-btn.fav.active { background:var(--fav); color:#0a0c0f; }
+.mark-btn.junk.active { background:var(--junk); color:#fff; }
+.mark-btn.infuse.active { background:var(--infuse); color:#fff; }
+.mark-btn.clear-btn { color:var(--text-dim); border-color:var(--border2); }
+.mark-btn.clear-btn:hover { color:var(--text); }
+.mark-btn.pending-select { outline:2px solid var(--accent); outline-offset:1px; }
+
+/* Sort controls */
+.sort-row { display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+.sort-label { font-family:'Barlow Condensed',sans-serif; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim); }
+.sort-btn { font-family:'Barlow Condensed',sans-serif; font-size:10px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; padding:4px 10px; background:var(--surface2); border:1px solid var(--border2); color:var(--text-muted); cursor:pointer; transition:all .15s; }
+.sort-btn:hover { color:var(--text); }
+.sort-btn.active { border-color:var(--accent); color:var(--accent); }
+
+/* Armor stats */
+.armor-stat-row { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
+.armor-stat-label { font-size:10px; color:var(--text-muted); width:90px; flex-shrink:0; }
+.armor-stat-bar { flex:1; height:3px; background:var(--surface2); }
+.armor-stat-fill { height:100%; background:var(--warlock); }
+.armor-stat-val { font-family:'Barlow Condensed',sans-serif; font-size:11px; color:var(--text); width:24px; flex-shrink:0; }
+
+.no-items { font-size:13px; color:var(--text-dim); padding:.75rem 0; }
+
+/* Junk table */
+.junk-controls { display:flex; align-items:center; gap:10px; margin-bottom:1rem; flex-wrap:wrap; }
+.junk-count { font-size:12px; color:var(--text-dim); }
+.junk-filter-group { display:flex; gap:4px; }
+.junk-table-wrap { overflow-x:auto; }
+.junk-table { width:100%; border-collapse:collapse; font-size:12px; }
+.junk-table th { font-family:'Barlow Condensed',sans-serif; font-size:10px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-dim); padding:6px 10px; text-align:left; border-bottom:1px solid var(--border2); cursor:pointer; user-select:none; white-space:nowrap; background:var(--surface); position:sticky; top:0; }
+.junk-table th:hover { color:var(--text); }
+.junk-table th.sorted { color:var(--accent); }
+.junk-table th .sort-arrow { margin-left:4px; font-size:9px; }
+.junk-table td { padding:6px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.junk-table tr:hover td { background:var(--surface2); }
+.junk-table tr.done-in-dim td { opacity:0.4; text-decoration:line-through; }
+.junk-icon { width:36px; height:36px; overflow:hidden; background:var(--surface2); flex-shrink:0; }
+.junk-icon img { width:100%; height:100%; object-fit:cover; display:block; }
+.junk-name-cell { display:flex; align-items:center; gap:8px; }
+.junk-item-name { font-size:13px; color:var(--text); font-weight:400; }
+.junk-item-sub { font-size:10px; color:var(--text-dim); margin-top:1px; }
+.rarity-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.rarity-dot.exotic { background:var(--exotic-col); }
+.rarity-dot.legendary { background:var(--legendary-col); }
+.rarity-dot.rare { background:var(--rare-col); }
+.loc-cell { font-size:11px; color:var(--text-muted); white-space:nowrap; }
+.equipped-tag { font-size:9px; color:var(--accent); margin-left:4px; }
+.power-cell { font-family:'Barlow Condensed',sans-serif; font-size:16px; font-weight:700; color:var(--text); }
+.perks-cell { display:flex; flex-wrap:wrap; gap:3px; max-width:300px; }
+.perk-mini { display:flex; align-items:center; gap:3px; background:var(--surface2); border:1px solid var(--border); padding:2px 5px; }
+.perk-mini img { width:14px; height:14px; }
+.perk-mini span { font-size:10px; color:var(--text-muted); white-space:nowrap; }
+.unmark-btn { font-family:'Barlow Condensed',sans-serif; font-size:10px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; padding:4px 10px; background:transparent; border:1px solid var(--border2); color:var(--text-dim); cursor:pointer; transition:all .15s; white-space:nowrap; }
+.unmark-btn:hover { border-color:var(--junk); color:var(--junk); }
+.no-junk { text-align:center; padding:3rem 0; color:var(--text-dim); font-size:14px; }
+
+/* Name-level accordion in junk/fav tabs */
+.name-accordion { border:1px solid var(--border); margin-bottom:4px; }
+.name-accordion-header { display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--surface); cursor:pointer; user-select:none; transition:background .15s; }
+.name-accordion-header:hover { background:var(--surface2); }
+.name-accordion-header.open { background:var(--surface2); }
+.name-acc-icon { width:28px; height:28px; overflow:hidden; background:var(--surface2); flex-shrink:0; }
+.name-acc-icon img { width:100%; height:100%; object-fit:cover; display:block; }
+.name-acc-title { font-size:13px; color:var(--text); flex:1; }
+.name-acc-count { font-family:'Barlow Condensed',sans-serif; font-size:11px; color:var(--text-dim); }
+.name-acc-arrow { font-size:9px; color:var(--text-dim); transition:transform .2s; }
+.name-accordion-header.open .name-acc-arrow { transform:rotate(180deg); }
+.name-accordion-body { display:none; border-top:1px solid var(--border); overflow-x:auto; }
+.name-accordion-body.open { display:block; }
+.name-acc-rarity { width:3px; align-self:stretch; flex-shrink:0; }
+.dim-check-cell { width:32px; padding-left:12px !important; }
+.dim-checkbox { width:16px; height:16px; cursor:pointer; accent-color:var(--accent); }
+
+/* Group header */
+.mark-group-header { font-family:'Barlow Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-dim); padding:10px 10px 6px; background:var(--bg); display:flex; align-items:center; gap:8px; }
+.mark-group-header::after { content:''; flex:1; height:1px; background:var(--border); }
+.mark-controls { display:flex; align-items:center; gap:10px; margin-bottom:1rem; flex-wrap:wrap; }
+.mark-count { font-size:12px; color:var(--text-dim); margin-left:auto; }
+.junk-table-wrap { overflow-x:auto; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="logo-mark"><div class="logo-inner"></div></div>
+    <h1>Guardian <span>Lookup</span></h1>
+  </div>
+
+  <div class="form-row">
+    <div class="field">
+      <label>Bungie API Key</label>
+      <input type="password" id="apiKey" placeholder="Paste your API key" value="65dad06c7ac04b90ba4096ecf0c9f6f5" />
+      <div class="hint">Get free key at <a href="https://www.bungie.net/en/Application" target="_blank">bungie.net/en/Application</a></div>
+    </div>
+    <div class="field">
+      <label>Bungie ID</label>
+      <input type="text" id="bungieId" placeholder="e.g. Wood#5589" value="Wood#5589" />
+    </div>
+    <button class="primary" id="searchBtn" onclick="searchPlayer()">Search</button>
+  </div>
+  <div id="oauthStatus" style="margin-bottom:.75rem;font-size:12px;"></div>
+
+  <div id="error" class="error"></div>
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loadingText">Searching…</div>
+  </div>
+
+  <div id="app">
+    <div class="main-tabs">
+      <button class="main-tab active" onclick="switchMain('characters')">Characters</button>
+      <button class="main-tab" onclick="switchMain('weapons')">Weapons</button>
+      <button class="main-tab" onclick="switchMain('armor')">Armor</button>
+      <button class="main-tab" onclick="switchMain('favorites')">Favorites</button>
+      <button class="main-tab" onclick="switchMain('junk')">Junk</button>
+    </div>
+    <div id="panel-characters" class="main-panel active"></div>
+    <div id="panel-weapons" class="main-panel"></div>
+    <div id="panel-armor" class="main-panel"></div>
+    <div id="panel-favorites" class="main-panel"></div>
+    <div id="panel-junk" class="main-panel"></div>
+  </div>
+
+</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v30</div>
+
+<!-- Compare overlay -->
+<div id="compareOverlay" class="compare-overlay">
+  <div class="compare-modal">
+    <button class="compare-close" onclick="closeCompare()">✕</button>
+    <div id="compareContent"></div>
+  </div>
+</div>
+
+<script>
+// ===================== CONSTANTS =====================
+const BUNGIE_CLIENT_ID = '51779';
 const BUNGIE_REDIRECT_URL = 'https://destiny-2-item-compare.vercel.app';
 const BUNGIE_AUTH_URL = 'https://www.bungie.net/en/OAuth/Authorize';
 const BUNGIE_TOKEN_URL = 'https://www.bungie.net/Platform/App/OAuth/Token/';
