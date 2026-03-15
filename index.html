@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet" />
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-:root { 
+:root {
   --bg: #0a0c0f;
   --surface: #111318;
   --surface2: #181c22;
@@ -631,14 +631,16 @@ async function searchPlayer() {
     }
 
     if (hasComp306) {
-      // Store as instanceId -> socketIndex -> [plugItemHash]
+      // Store as instanceId -> socketIndex -> Set of plugItemHashes
+      // API returns: {instanceId: {plugs: {socketIndex: [{plugItemHash, canInsert, enabled}]}}}
       reusablePlugsData = {_perItem: true};
       Object.entries(comp306).forEach(([iid, data])=>{
         reusablePlugsData[iid] = {};
         Object.entries(data.plugs||{}).forEach(([sockIdx, plugArr])=>{
-          reusablePlugsData[iid][sockIdx] = new Set(
+          reusablePlugsData[iid][String(sockIdx)] = new Set(
             (plugArr||[]).filter(p=>p.canInsert||p.enabled).map(p=>p.plugItemHash)
           );
+          reusablePlugsData[iid][Number(sockIdx)] = reusablePlugsData[iid][String(sockIdx)];
         });
       });
     } else {
@@ -1265,9 +1267,10 @@ function renderCompare(instanceIds, type) {
         // - Otherwise: use flat profile plugs set (less accurate)
         let rolledHashes;
         if (reusablePlugsData._perItem) {
-          // Per-item exact rolls from component 306
+          // Per-item exact rolls from component 309
           const itemPlugs = reusablePlugsData[iid];
-          const sockSet = itemPlugs?.[sockIdx] || itemPlugs?.[String(sockIdx)] || new Set();
+          const sockSet = itemPlugs?.[String(sockIdx)] || itemPlugs?.[sockIdx] || new Set();
+          console.log(`[D2 ROLL] iid:${iid} sockIdx:${sockIdx} sockSet.size:${sockSet.size} possible:${possibleHashes.length}`);
           rolledHashes = possibleHashes.filter(h => h===s.plugHash || sockSet.has(h));
         } else {
           // Flat fallback
