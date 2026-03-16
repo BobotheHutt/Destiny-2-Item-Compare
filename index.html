@@ -1066,7 +1066,7 @@ const PLUG_COL_LABELS = {
   perks:'Perk 1', traits:'Perk'
 };
 // Excluded slot types (same for all rolls, not useful to compare)
-const PLUG_COL_EXCLUDE = ['intrinsics','frames','origins','masterworks','mods','catalysts','trackers'];
+const PLUG_COL_EXCLUDE = ['intrinsics','origins','masterworks','mods','catalysts','trackers'];
 function plugColLabel(identifier) {
   for (const key of PLUG_COL_ORDER) {
     if (identifier.includes(key)) return PLUG_COL_LABELS[key]||key;
@@ -1227,15 +1227,17 @@ function renderCompare(instanceIds, type) {
         const ident = equippedDef.plug?.plugCategoryIdentifier||'';
 
         // Skip excluded slot types
-        const excluded = ['intrinsics','frames','origins','masterworks','mods','catalysts','trackers','shader','ornaments','ghosts','holster','auras','finishers','emotes'];
+        const excluded = ['intrinsics','origins','masterworks','mods','catalysts','trackers','shader','ornaments','ghosts','holster','auras','finishers','emotes'];
         if (excluded.some(ex=>ident.includes(ex))) return;
 
         // Determine column type
         let colLabel = null;
+        if (sockIdx === 0) return; // socket 0 is always the archetype frame, skip
         if (ident.includes('barrels')) colLabel = 'Barrel';
         else if (ident.includes('magazines') || ident.includes('batteries') || ident.includes('guards')) colLabel = 'Magazine';
         else if (ident.includes('traits')) colLabel = 'Perk';
         else if (ident.includes('perks')) colLabel = 'Perk';
+        else if (ident.includes('frames')) colLabel = 'Perk'; // frames after socket 0 = trait perk
         else return; // skip anything else
 
         // Collect rolled options for this specific item instance
