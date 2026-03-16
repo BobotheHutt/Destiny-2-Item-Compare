@@ -319,7 +319,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v32</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v33</div>
 
 <!-- Compare overlay -->
 <div id="compareOverlay" class="compare-overlay">
@@ -372,8 +372,8 @@ let oauthToken    = localStorage.getItem('d2oauth_token') || null;
 let oauthExpiry   = Number(localStorage.getItem('d2oauth_expiry') || 0);
 let profileInfo   = {};
 
-let weaponFilter  = {exotic:false, legendary:true, dupes:false};
-let armorFilter   = {exotic:false, legendary:true};
+let weaponFilter  = {exotic:false, legendary:true, dupes:false, locked:false};
+let armorFilter   = {exotic:false, legendary:true, locked:false};
 let activeWeaponCategory = null;
 let activeWeaponType     = null;
 let activeWeaponBHash    = null;
@@ -758,9 +758,16 @@ async function searchPlayer() {
     inGameLockState = {};
     allItems.forEach(i=>{
       if (i.itemInstanceId) {
-        inGameLockState[i.itemInstanceId] = !!(i.state & 1);
+        const locked = !!(i.state & 1);
+        inGameLockState[i.itemInstanceId] = locked;
+        // Auto-populate marks for items locked in game that aren't already marked
+        if (locked && !marks[i.itemInstanceId]) {
+          marks[i.itemInstanceId] = 'fav';
+        }
       }
     });
+    // Persist any newly auto-populated marks
+    localStorage.setItem('d2marks', JSON.stringify(marks));
 
     renderCharacters(characters, charEquip, profile);
     renderWeaponsTab();
@@ -851,8 +858,10 @@ function renderWeaponsTab() {
       <div class="toggle-group">
         <button class="toggle-btn exotic ${weaponFilter.exotic?'active':''}" onclick="toggleWeaponFilter('exotic',this)">Exotic</button>
         <button class="toggle-btn legendary ${weaponFilter.legendary?'active':''}" onclick="toggleWeaponFilter('legendary',this)">Legendary</button>
-        <button class="toggle-btn ${weaponFilter.dupes?'active':''}" onclick="toggleWeaponFilter('dupes',this)" style="border-color:var(--accent);color:${weaponFilter.dupes?'#0a0c0f':'var(--accent)'};">Dupes Only</button>
+        <button class="toggle-btn ${weaponFilter.dupes?'active':''}" onclick="toggleWeaponFilter('dupes',this)" style="${weaponFilter.dupes?'background:var(--accent);color:#0a0c0f;border-color:var(--accent);':'border-color:var(--accent);color:var(--accent);'}">Dupes Only</button>
+        <button class="toggle-btn ${weaponFilter.locked?'active':''}" onclick="toggleWeaponFilter('locked',this)" style="${weaponFilter.locked?'background:var(--fav);color:#0a0c0f;border-color:var(--fav);':'border-color:var(--fav);color:var(--fav);'}">🔒 Locked</button>
       </div>
+      <button onclick="clearAllMarks('weapon')" style="margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text-dim);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;cursor:pointer;">Clear All Marks</button>
     </div>
     <div id="weaponAccordions"></div>
     <div id="weaponTypeSection"></div>
@@ -862,10 +871,8 @@ function renderWeaponsTab() {
 
 function toggleWeaponFilter(type, btn) {
   weaponFilter[type] = !weaponFilter[type];
-  btn.classList.toggle('active', weaponFilter[type]);
-  // Rebuild without resetting open accordion or selected type
-  buildWeaponAccordions();
-  // If a type is already selected, re-render the grid with the new filter
+  // Re-render weapons tab so button styles update correctly
+  renderWeaponsTab();
   if (activeWeaponBHash && activeWeaponType) {
     selectWeaponType(activeWeaponBHash, activeWeaponType);
   }
@@ -890,14 +897,16 @@ function getFilteredWeapons() {
     if (tier<5) return false;
     return true;
   });
-  if (!weaponFilter.dupes) return base;
+  // Locked filter
+  const lockedBase = weaponFilter.locked ? base.filter(i=>getMark(i.itemInstanceId)==='fav') : base;
+  if (!weaponFilter.dupes) return lockedBase;
   // Dupes only: keep items whose name appears 2+ times
   const nameCounts = {};
-  base.forEach(i=>{
+  lockedBase.forEach(i=>{
     const n = getItemDef(i.itemHash)?.displayProperties?.name||'';
     nameCounts[n] = (nameCounts[n]||0)+1;
   });
-  return base.filter(i=>{
+  return lockedBase.filter(i=>{
     const n = getItemDef(i.itemHash)?.displayProperties?.name||'';
     return nameCounts[n] >= 2;
   });
@@ -1035,7 +1044,9 @@ function renderArmorTab() {
       <div class="toggle-group">
         <button class="toggle-btn exotic ${armorFilter.exotic?'active':''}" onclick="toggleArmorFilter('exotic',this)">Exotic</button>
         <button class="toggle-btn legendary ${armorFilter.legendary?'active':''}" onclick="toggleArmorFilter('legendary',this)">Legendary</button>
+        <button class="toggle-btn ${armorFilter.locked?'active':''}" onclick="toggleArmorFilter('locked',this)" style="${armorFilter.locked?'background:var(--fav);color:#0a0c0f;border-color:var(--fav);':'border-color:var(--fav);color:var(--fav);'}">🔒 Locked</button>
       </div>
+      <button onclick="clearAllMarks('armor')" style="margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text-dim);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;cursor:pointer;">Clear All Marks</button>
     </div>
     <div id="armorAccordions"></div>
     <div id="armorSlotSection"></div>
@@ -1045,11 +1056,31 @@ function renderArmorTab() {
 
 function toggleArmorFilter(type, btn) {
   armorFilter[type] = !armorFilter[type];
-  btn.classList.toggle('active', armorFilter[type]);
-  // Rebuild without resetting open accordion or selected slot
-  buildArmorAccordions();
+  // Re-render armor tab so button styles update correctly
+  renderArmorTab();
   if (activeArmorClass !== null && activeArmorSlot) {
     selectArmorSlot(activeArmorClass, activeArmorSlot);
+  }
+}
+
+function clearAllMarks(tabType) {
+  const label = tabType==='weapon' ? 'weapons' : 'armor';
+  if (!confirm(`Clear all marks (locked, junk, infuse) for all ${label}? This cannot be undone.`)) return;
+  const toDelete = allItems.filter(i=>{
+    if (!i.itemInstanceId) return false;
+    const effectiveBucket = getEffectiveBucketHash(i);
+    if (tabType==='weapon') return WEAPON_BUCKETS.has(effectiveBucket);
+    if (tabType==='armor') return ARMOR_BUCKETS.has(effectiveBucket);
+    return false;
+  });
+  toDelete.forEach(i=>{ delete marks[i.itemInstanceId]; });
+  localStorage.setItem('d2marks', JSON.stringify(marks));
+  if (tabType==='weapon') {
+    renderWeaponsTab();
+    if (activeWeaponBHash && activeWeaponType) selectWeaponType(activeWeaponBHash, activeWeaponType);
+  } else {
+    renderArmorTab();
+    if (activeArmorClass!==null && activeArmorSlot) selectArmorSlot(activeArmorClass, activeArmorSlot);
   }
 }
 
@@ -1062,6 +1093,7 @@ function getFilteredArmor() {
     if (tier===6 && !armorFilter.exotic) return false;
     if (tier===5 && !armorFilter.legendary) return false;
     if (tier<5) return false;
+    if (armorFilter.locked && getMark(i.itemInstanceId)!=='fav') return false;
     return true;
   });
 }
