@@ -1270,7 +1270,7 @@ function renderCompare(instanceIds, type) {
           // Per-item exact rolls from component 309
           const itemPlugs = reusablePlugsData[iid];
           const sockSet = itemPlugs?.[String(sockIdx)] || itemPlugs?.[sockIdx] || new Set();
-          console.log(`[D2 ROLL] iid:${iid} sockIdx:${sockIdx} sockSet.size:${sockSet.size} possible:${possibleHashes.length}`);
+          if (sockIdx <= 5) console.log(`[D2 ROLL] iid:${iid} sockIdx:${sockIdx} sockSet.size:${sockSet.size} possible:${possibleHashes.length} comp309keys:${Object.keys(reusablePlugsData[iid]||{}).join(',')}`);
           rolledHashes = possibleHashes.filter(h => h===s.plugHash || sockSet.has(h));
         } else {
           // Flat fallback
