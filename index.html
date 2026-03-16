@@ -28,8 +28,27 @@
   --fav: #4caf7d;
   --junk: #e05555;
   --infuse: #4a9fd4;
+  --theme-glow: rgba(200,168,75,0.04);
+  --theme-line: rgba(200,168,75,0.08);
 }
-body { background: var(--bg); color: var(--text); font-family: 'Barlow', sans-serif; font-weight: 300; min-height: 100vh; }
+body { background: var(--bg); color: var(--text); font-family: 'Barlow', sans-serif; font-weight: 300; min-height: 100vh; position: relative; }
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, var(--theme-glow) 0%, transparent 70%),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 40px,
+      var(--theme-line) 40px,
+      var(--theme-line) 41px
+    );
+}
+.page { position: relative; z-index: 1; }
 body::before { content:''; position:fixed; inset:0; background-image: linear-gradient(rgba(200,168,75,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(200,168,75,0.025) 1px,transparent 1px); background-size:40px 40px; pointer-events:none; z-index:0; }
 .page { position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:1.5rem 1.5rem 4rem; }
 
@@ -97,7 +116,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 .char-power { font-family:'Barlow Condensed',sans-serif; font-size:32px; font-weight:700; color:var(--text); line-height:1; }
 .char-power-label { font-size:9px; color:var(--text-muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:2px; margin-bottom:8px; }
 .char-time { font-size:11px; color:var(--text-dim); }
-.recent-badge { display:inline-block; font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; background:rgba(200,168,75,0.12); color:var(--accent); padding:2px 6px; margin-bottom:6px; }
+.recent-badge { display:inline-block; font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; background:rgba(200,168,75,0.12); color:var(--accent); padding:2px 6px; margin-left:8px; vertical-align:middle; }
 
 /* Equipped items */
 .equipped-section { margin-top:10px; }
@@ -319,7 +338,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v33</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v34</div>
 
 <!-- Compare overlay -->
 <div id="compareOverlay" class="compare-overlay">
@@ -373,7 +392,7 @@ let oauthExpiry   = Number(localStorage.getItem('d2oauth_expiry') || 0);
 let profileInfo   = {};
 
 let weaponFilter  = {exotic:false, legendary:true, dupes:false, locked:false};
-let armorFilter   = {exotic:false, legendary:true, locked:false};
+let armorFilter   = {exotic:false, legendary:true, locked:false, dupes:false};
 let activeWeaponCategory = null;
 let activeWeaponType     = null;
 let activeWeaponBHash    = null;
@@ -382,6 +401,24 @@ let activeArmorSlot      = null;
 let compareSort          = 'power';
 
 // ===================== UTILS =====================
+
+// Class-based themes: shift accent color and background glow per class
+const CLASS_THEMES = {
+  0: { accent:'#c8a84b', accent2:'#e8c96a', glow:'rgba(200,168,75,0.06)', line:'rgba(200,168,75,0.09)'  }, // Titan - gold
+  1: { accent:'#4a9fd4', accent2:'#6abde8', glow:'rgba(74,159,212,0.06)',  line:'rgba(74,159,212,0.09)' }, // Hunter - blue
+  2: { accent:'#9b6fc4', accent2:'#b88de0', glow:'rgba(155,111,196,0.06)', line:'rgba(155,111,196,0.09)'}, // Warlock - purple
+};
+function applyClassTheme(classType) {
+  const theme = CLASS_THEMES[classType] || CLASS_THEMES[0];
+  const root = document.documentElement;
+  root.style.setProperty('--accent',      theme.accent);
+  root.style.setProperty('--accent2',     theme.accent2);
+  root.style.setProperty('--theme-glow',  theme.glow);
+  root.style.setProperty('--theme-line',  theme.line);
+  // Also update infuse color to match class
+  if (classType === 1) root.style.setProperty('--infuse', theme.accent);
+}
+
 function saveMark(instanceId, mark) {
   if (mark === null) { delete marks[instanceId]; } else { marks[instanceId] = mark; }
   localStorage.setItem('d2marks', JSON.stringify(marks));
@@ -756,18 +793,22 @@ async function searchPlayer() {
     // Read in-game lock state (state bitmask bit 1 = locked/favorited)
     // Store in-game lock state separately so we can detect pending changes
     inGameLockState = {};
+    let marksChanged = false;
     allItems.forEach(i=>{
-      if (i.itemInstanceId) {
-        const locked = !!(i.state & 1);
-        inGameLockState[i.itemInstanceId] = locked;
-        // Auto-populate marks for items locked in game that aren't already marked
-        if (locked && !marks[i.itemInstanceId]) {
-          marks[i.itemInstanceId] = 'fav';
-        }
+      if (!i.itemInstanceId) return;
+      const locked = !!(i.state & 1);
+      inGameLockState[i.itemInstanceId] = locked;
+      // Sync in-game lock state to marks:
+      // If locked in game and not already marked fav -> set fav
+      if (locked && marks[i.itemInstanceId] !== 'fav') {
+        marks[i.itemInstanceId] = 'fav';
+        marksChanged = true;
       }
+      // If NOT locked in game and marked fav only because of previous auto-populate
+      // (don't remove user-set marks — only remove if the iid was never manually set)
+      // We leave user-set fav marks alone; sync button handles pushing them to game
     });
-    // Persist any newly auto-populated marks
-    localStorage.setItem('d2marks', JSON.stringify(marks));
+    if (marksChanged) localStorage.setItem('d2marks', JSON.stringify(marks));
 
     renderCharacters(characters, charEquip, profile);
     renderWeaponsTab();
@@ -787,10 +828,17 @@ async function searchPlayer() {
 function renderCharacters(characters, charEquip, profile) {
   const totalHours = Math.round(characters.reduce((a,c)=>a+(parseInt(c.minutesPlayedTotal)||0),0)/60);
   const highestPow = characters.length ? Math.max(...characters.map(c=>c.light||0)) : 0;
-  const iconPath   = profile?.userInfo?.iconPath;
-  const avatarHtml = iconPath
-    ? `<img src="https://www.bungie.net${iconPath}" onerror="this.style.display='none';this.parentElement.textContent='${profileInfo.name[0].toUpperCase()}'" />`
+  // Use last-played character's emblem as avatar
+  const lastChar = characters[0]; // already sorted by dateLastPlayed
+  const emblemPath = lastChar?.emblemPath;
+  const emblemBgPath = lastChar?.emblemBackgroundPath;
+  const avatarHtml = emblemPath
+    ? `<img src="https://www.bungie.net${emblemPath}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'" />`
     : profileInfo.name[0].toUpperCase();
+
+  // Apply class-based theme
+  const lastClass = lastChar?.classType;
+  applyClassTheme(lastClass);
 
   const charsHtml = characters.map((c,i)=>{
     const ck = CLASS_KEYS[c.classType]||'unknown';
@@ -802,8 +850,7 @@ function renderCharacters(characters, charEquip, profile) {
     const eqSection = (items,label) => items.length===0?'':
       `<div class="eq-title">${label}</div>${items.map(it=>renderItemRow(it)).join('')}`;
     return `<div class="char-card ${ck}">
-      ${i===0?'<div class="recent-badge">Most Recent</div>':''}
-      <div class="char-class">${CLASS_NAMES[c.classType]||'Unknown'}</div>
+      <div class="char-class">${CLASS_NAMES[c.classType]||'Unknown'}${i===0?` <span class="recent-badge">Most Recent</span>`:''}</div>
       <div class="char-race">${RACE_NAMES[c.raceType]||''} ${GENDER_NAMES[c.genderType]||''}</div>
       <div class="char-power">${c.light||'—'}</div>
       <div class="char-power-label">Power Level</div>
@@ -816,15 +863,14 @@ function renderCharacters(characters, charEquip, profile) {
 
   document.getElementById('panel-characters').innerHTML = `
     <div class="profile-header">
-      <div class="avatar">${avatarHtml}</div>
+      <div class="avatar" style="width:64px;height:64px;">${avatarHtml}</div>
       <div>
         <div class="profile-name">${profileInfo.name}<span>#${profileInfo.code}</span>
           <span class="platform-badge">${profileInfo.platform}</span></div>
-        <div class="profile-meta">ID: ${profileInfo.membershipId}</div>
       </div>
     </div>
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-label">Characters</div><div class="stat-value">${characters.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Most Played</div><div class="stat-value" style="font-size:15px;">${CLASS_NAMES[characters.reduce((a,b)=>(parseInt(b.minutesPlayedTotal)||0)>(parseInt(a.minutesPlayedTotal)||0)?b:a).classType]||'—'}</div></div>
       <div class="stat-card"><div class="stat-label">Total Hours</div><div class="stat-value">${totalHours.toLocaleString()}</div></div>
       <div class="stat-card"><div class="stat-label">Highest Power</div><div class="stat-value">${highestPow||'—'}</div></div>
     </div>
@@ -1044,6 +1090,7 @@ function renderArmorTab() {
       <div class="toggle-group">
         <button class="toggle-btn exotic ${armorFilter.exotic?'active':''}" onclick="toggleArmorFilter('exotic',this)">Exotic</button>
         <button class="toggle-btn legendary ${armorFilter.legendary?'active':''}" onclick="toggleArmorFilter('legendary',this)">Legendary</button>
+        <button class="toggle-btn ${armorFilter.dupes?'active':''}" onclick="toggleArmorFilter('dupes',this)" style="${armorFilter.dupes?'background:var(--accent);color:#0a0c0f;border-color:var(--accent);':'border-color:var(--accent);color:var(--accent);'}">Dupes Only</button>
         <button class="toggle-btn ${armorFilter.locked?'active':''}" onclick="toggleArmorFilter('locked',this)" style="${armorFilter.locked?'background:var(--fav);color:#0a0c0f;border-color:var(--fav);':'border-color:var(--fav);color:var(--fav);'}">🔒 Locked</button>
       </div>
       <button onclick="clearAllMarks('armor')" style="margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text-dim);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;cursor:pointer;">Clear All Marks</button>
@@ -1085,7 +1132,7 @@ function clearAllMarks(tabType) {
 }
 
 function getFilteredArmor() {
-  return allItems.filter(i=>{
+  const base = allItems.filter(i=>{
     if (!ARMOR_BUCKETS.has(getEffectiveBucketHash(i))) return false;
     const def = getItemDef(i.itemHash);
     if (!def) return false;
@@ -1096,6 +1143,16 @@ function getFilteredArmor() {
     if (armorFilter.locked && getMark(i.itemInstanceId)!=='fav') return false;
     return true;
   });
+  if (!armorFilter.dupes) return base;
+  const nameCounts = {};
+  base.forEach(i=>{
+    const n = getItemDef(i.itemHash)?.displayProperties?.name||'';
+    nameCounts[n] = (nameCounts[n]||0)+1;
+  });
+  return base.filter(i=>{
+    const n = getItemDef(i.itemHash)?.displayProperties?.name||'';
+    return nameCounts[n] >= 2;
+  });
 }
 
 function buildArmorAccordions() {
@@ -1103,16 +1160,23 @@ function buildArmorAccordions() {
   const classes = [0,1,2];
   const html = classes.map(classType=>{
     const label = CLASS_NAMES[classType];
-    const count = armor.filter(a=>{
+    const classArmor = armor.filter(a=>{
       const def = getItemDef(a.itemHash);
       return def?.classType===classType || def?.classType===3;
-    }).length;
+    });
+    let countLabel;
+    if (armorFilter.dupes) {
+      const uniqueNames = new Set(classArmor.map(a=>getItemDef(a.itemHash)?.displayProperties?.name||''));
+      countLabel = `${uniqueNames.size} dupe group${uniqueNames.size!==1?'s':''}`;
+    } else {
+      countLabel = `${classArmor.length} items`;
+    }
     const isOpen = activeArmorClass===classType;
     return `<div class="accordion">
       <div class="accordion-header ${isOpen?'open':''}" onclick="toggleArmorClass(${classType},this)">
         <span class="accordion-title">${label}</span>
         <span style="display:flex;align-items:center;gap:8px;">
-          <span class="accordion-count">${count} items</span>
+          <span class="accordion-count">${countLabel}</span>
           <span class="accordion-arrow">▼</span>
         </span>
       </div>
