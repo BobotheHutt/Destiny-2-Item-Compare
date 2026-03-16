@@ -903,7 +903,10 @@ function selectWeaponType(bHash, type) {
     node.addEventListener('click', ()=>{
       console.log('[D2] grid item clicked, key:', node.dataset.gkey, gridClickMap[node.dataset.gkey]);
       const entry = gridClickMap[node.dataset.gkey];
-      if (entry) openCompare(entry.instanceIds, entry.type);
+      if (entry) {
+        if (entry.type==='weapon') openGodRoll(entry.instanceIds);
+        else openCompare(entry.instanceIds, entry.type);
+      }
     });
   });
   // Rebuild accordions AFTER grid so it doesn't interfere
@@ -1082,6 +1085,269 @@ function plugColKey(identifier) {
     if (identifier.includes(key)) return key;
   }
   return null;
+}
+
+// ===================== GOD ROLL MODAL =====================
+let godRollInstanceIds = [];
+let godRollWeights = {Barrel:5, Magazine:5, 'Perk 1':10, 'Perk 2':10};
+let godRollSelected = {Barrel:new Set(), Magazine:new Set(), 'Perk 1':new Set(), 'Perk 2':new Set()};
+let godRollExactOnly = false;
+
+function openGodRoll(instanceIds) {
+  godRollInstanceIds = instanceIds;
+  // Reset selections when opening a new weapon
+  godRollSelected = {Barrel:new Set(), Magazine:new Set(), 'Perk 1':new Set(), 'Perk 2':new Set()};
+  renderGodRoll();
+  document.getElementById('compareOverlay').classList.add('open');
+}
+
+function getWeaponRolls(instanceIds) {
+  // Returns {colLabel -> Set of perk names} across all copies, plus per-item roll data
+  const COL_ORDER = ['Barrel','Magazine','Perk 1','Perk 2'];
+  const poolByCol = {Barrel:new Map(), Magazine:new Map(), 'Perk 1':new Map(), 'Perk 2':new Map()};
+  const itemRolls = []; // [{iid, name, power, item, inst, colsMatched}]
+
+  instanceIds.forEach(iid => {
+    const item = allItems.find(i=>i.itemInstanceId===iid);
+    if (!item) return;
+    const inst = instanceData[iid];
+    const sockets = socketData[iid];
+    if (!sockets?.sockets) return;
+
+    const cols = extractWeaponCols(item, iid, sockets);
+    // cols = [{label, hashes:[]}]
+
+    // Add to pool
+    cols.forEach(col => {
+      if (!poolByCol[col.label]) return;
+      col.hashes.forEach(h => {
+        const d = getItemDef(h);
+        const n = d?.displayProperties?.name||'';
+        if (n) poolByCol[col.label].set(n, h);
+      });
+    });
+
+    itemRolls.push({iid, item, inst, cols});
+  });
+
+  return {poolByCol, itemRolls};
+}
+
+function extractWeaponCols(item, iid, sockets) {
+  const cols = [];
+  sockets.sockets.forEach((s, sockIdx) => {
+    if (!s.plugHash) return;
+    const equippedDef = getItemDef(s.plugHash);
+    if (!equippedDef) return;
+    const ident = equippedDef.plug?.plugCategoryIdentifier||'';
+    const excluded = ['intrinsics','origins','masterworks','mods','catalysts','trackers','shader','ornaments','ghosts','holster','auras','finishers','emotes'];
+    if (excluded.some(ex=>ident.includes(ex))) return;
+    if (sockIdx === 0) return;
+
+    let colLabel = null;
+    if (ident.includes('barrels')) colLabel = 'Barrel';
+    else if (ident.includes('magazines')||ident.includes('batteries')||ident.includes('guards')) colLabel = 'Magazine';
+    else if (ident.includes('traits')||ident.includes('perks')) colLabel = 'Perk';
+    else if (ident.includes('frames')) colLabel = 'Perk';
+    else return;
+
+    // Get rolled hashes
+    const itemDefLookup = getItemDef(item.itemHash);
+    const sockEntry = itemDefLookup?.sockets?.socketEntries?.[sockIdx];
+    const randHash = sockEntry?.randomizedPlugSetHash;
+    const reuseHash = sockEntry?.reusablePlugSetHash;
+    const possibleHashes = [];
+    [randHash, reuseHash].forEach(psHash => {
+      if (!psHash) return;
+      const ps = manifestPlugSets[psHash]||manifestPlugSets[psHash>>>0]||manifestPlugSets[String(psHash)];
+      if (ps?.reusablePlugItems) ps.reusablePlugItems.forEach(p=>{ if (!possibleHashes.includes(p.plugItemHash)) possibleHashes.push(p.plugItemHash); });
+    });
+
+    let rolledHashes;
+    if (reusablePlugsData._perItem) {
+      const itemPlugs = reusablePlugsData[iid];
+      const sockSet = itemPlugs?.[String(sockIdx)]||itemPlugs?.[sockIdx]||new Set();
+      rolledHashes = possibleHashes.filter(h=>h===s.plugHash||sockSet.has(h));
+    } else {
+      rolledHashes = possibleHashes.filter(h=>h===s.plugHash||reusablePlugsData.has(h));
+    }
+    if (!rolledHashes.length) rolledHashes = [s.plugHash];
+
+    const validHashes = rolledHashes.filter(h=>{
+      const d=getItemDef(h); if(!d) return false;
+      const n=d.displayProperties?.name||'';
+      return n&&!n.toLowerCase().includes('empty')&&!n.toLowerCase().includes('default');
+    });
+    if (!validHashes.length) return;
+    cols.push({label: colLabel, equippedHash: s.plugHash, hashes: validHashes});
+  });
+
+  // Rename Perk -> Perk 1, Perk 2
+  let pn=0;
+  cols.forEach(c=>{ if(c.label==='Perk'){ pn++; c.label=pn===1?'Perk 1':'Perk 2'; } });
+  return cols;
+}
+
+function scoreWeapon(itemRollCols) {
+  // itemRollCols = [{label, hashes:[]}]
+  let score = 0;
+  let maxScore = 0;
+  const COL_LABELS = ['Barrel','Magazine','Perk 1','Perk 2'];
+  COL_LABELS.forEach(col => {
+    const w = godRollWeights[col]||0;
+    maxScore += w;
+    const wanted = godRollSelected[col];
+    if (!wanted||!wanted.size) { score += w; return; } // no selection = full points
+    const colData = itemRollCols.find(c=>c.label===col);
+    if (!colData) return;
+    const hasMatch = colData.hashes.some(h=>{
+      const n = getItemDef(h)?.displayProperties?.name||'';
+      return wanted.has(n);
+    });
+    if (hasMatch) score += w;
+  });
+  return {score, maxScore};
+}
+
+function renderGodRoll() {
+  const COL_LABELS = ['Barrel','Magazine','Perk 1','Perk 2'];
+  const {poolByCol, itemRolls} = getWeaponRolls(godRollInstanceIds);
+
+  const def0 = getItemDef(allItems.find(i=>i.itemInstanceId===godRollInstanceIds[0])?.itemHash);
+  const weaponName = def0?.displayProperties?.name||'Weapon';
+
+  const anySelected = COL_LABELS.some(c=>godRollSelected[c]?.size>0);
+
+  // Score + sort items
+  const scored = itemRolls.map(r=>{
+    const {score, maxScore} = scoreWeapon(r.cols);
+    return {...r, score, maxScore};
+  }).filter(r=>!godRollExactOnly||r.score===r.maxScore)
+    .sort((a,b)=>b.score-a.score);
+
+  // Build perk pool columns
+  const poolHtml = COL_LABELS.map(col=>{
+    const pool = poolByCol[col];
+    const w = godRollWeights[col]||0;
+    const entries = [...pool.keys()].sort();
+    return `<div style="background:var(--surface);border:1px solid var(--border2);padding:10px 8px;display:flex;flex-direction:column;gap:0;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:5px;display:flex;align-items:center;justify-content:space-between;">
+        <span>${col}</span>
+        <span style="display:flex;align-items:center;gap:4px;">
+          <span style="font-size:9px;color:var(--text-dim);">pts</span>
+          <input type="number" class="gr-weight" data-col="${col}" value="${w}" min="0" max="99"
+            style="width:38px;background:var(--surface2);border:1px solid var(--border2);color:var(--accent);font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;text-align:center;padding:2px 4px;outline:none;" />
+        </span>
+      </div>
+      ${entries.length ? entries.map(name=>{
+        const sel = godRollSelected[col]?.has(name);
+        return `<label style="display:flex;align-items:center;gap:6px;padding:4px 2px;cursor:pointer;border-radius:2px;${sel?'background:rgba(200,168,75,0.1);':''}">
+          <input type="checkbox" class="gr-perk-check" data-col="${col}" data-name="${name}" ${sel?'checked':''} style="accent-color:var(--accent);cursor:pointer;width:13px;height:13px;flex-shrink:0;" />
+          <span style="font-size:12px;color:${sel?'var(--accent)':'var(--text)'};font-weight:${sel?600:400};line-height:1.3;">${name}</span>
+        </label>`;
+      }).join('') : `<span style="font-size:11px;color:var(--text-dim);font-style:italic;">No rolls found</span>`}
+    </div>`;
+  }).join('');
+
+  // Build ranked weapon list
+  const rankedHtml = scored.length ? scored.map((r,idx)=>{
+    const def = getItemDef(r.item.itemHash);
+    const name = def?.displayProperties?.name||'Item';
+    const icon = def?.displayProperties?.hasIcon?`<img src="https://www.bungie.net${def.displayProperties.icon}" style="width:100%;height:100%;object-fit:cover;display:block;" />`:'';
+    const power = r.inst?.primaryStat?.value||'—';
+    const iid = r.iid;
+    const mark = getMark(iid);
+    const loc = r.item.loc||'';
+    const pct = r.maxScore>0 ? Math.round(r.score/r.maxScore*100) : 100;
+    const scoreColor = pct===100?'var(--fav)':pct>=75?'var(--accent)':pct>=50?'var(--text)':'var(--text-muted)';
+
+    const colsHtml = r.cols.map(col=>{
+      const wanted = godRollSelected[col.label];
+      return `<div style="flex:1;min-width:0;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:3px;">${col.label}</div>
+        ${col.hashes.map(h=>{
+          const d=getItemDef(h); const pn=d?.displayProperties?.name||'';
+          const isWanted = wanted?.size>0 && wanted.has(pn);
+          const isEquipped = h===col.equippedHash;
+          return `<div style="font-size:11px;line-height:1.4;padding:1px 0;color:${isWanted?'var(--fav)':isEquipped?'var(--accent)':'var(--text-muted)'};font-weight:${isWanted||isEquipped?600:400};">${isWanted?'✓ ':isEquipped&&!isWanted?'·  ':'   '}${pn}</div>`;
+        }).join('')}
+      </div>`;
+    }).join('');
+
+    return `<div style="background:var(--surface);border:1px solid ${pct===100?'var(--fav)':pct>=75?'var(--accent)':'var(--border2)'};padding:12px;margin-bottom:6px;" id="citem-${iid}">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${scoreColor};width:32px;text-align:center;flex-shrink:0;line-height:1;">${idx+1}</div>
+        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;">${icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--text);">${name}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${def?.itemTypeAndTierDisplayName||''} <span class="loc-badge">${loc}${r.item.equipped?' · Equipped':''}</span></div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:var(--accent);">${power}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:${scoreColor};">${anySelected?pct+'%':''}</div>
+          <div class="mark-row" data-iid="${iid}" data-type="weapon" style="display:flex;gap:3px;">
+            <button class="mark-btn fav ${mark==='fav'?'active':''}" data-mark="fav" style="padding:3px 7px;font-size:10px;">★ Fav</button>
+            <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:3px 7px;font-size:10px;">Junk</button>
+            <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:3px 7px;font-size:10px;">Infuse</button>
+            <button class="mark-btn clear-btn" data-mark="clear" style="padding:3px 7px;font-size:10px;">✕</button>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">${colsHtml}</div>
+    </div>`;
+  }).join('') : `<div style="color:var(--text-muted);font-size:13px;padding:20px;text-align:center;">No weapons match your exact roll filter.</div>`;
+
+  document.getElementById('compareContent').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div class="compare-title" style="margin-bottom:0;">${weaponName} — ${godRollInstanceIds.length} ${godRollInstanceIds.length===1?'copy':'copies'}</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+        <input type="checkbox" id="grExactOnly" ${godRollExactOnly?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
+        Exact match only
+      </label>
+    </div>
+    <div style="margin-bottom:14px;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">God Roll Builder — select your desired perks, set point values per column</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">${poolHtml}</div>
+    </div>
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">
+      ${anySelected ? 'Ranked by God Roll Score' : 'Your Copies — select perks above to rank'}
+    </div>
+    ${rankedHtml}`;
+
+  // Wire up checkboxes
+  document.querySelectorAll('#compareContent .gr-perk-check').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const col = cb.dataset.col;
+      const name = cb.dataset.name;
+      if (cb.checked) godRollSelected[col].add(name);
+      else godRollSelected[col].delete(name);
+      renderGodRoll();
+    });
+  });
+
+  // Wire up weight inputs
+  document.querySelectorAll('#compareContent .gr-weight').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      godRollWeights[inp.dataset.col] = Number(inp.value)||0;
+      renderGodRoll();
+    });
+  });
+
+  // Exact match toggle
+  const exactEl = document.getElementById('grExactOnly');
+  if (exactEl) exactEl.addEventListener('change', ()=>{ godRollExactOnly=exactEl.checked; renderGodRoll(); });
+
+  // Mark buttons
+  document.querySelectorAll('#compareContent .mark-row').forEach(row=>{
+    const iid = row.dataset.iid;
+    row.querySelectorAll('.mark-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const m = btn.dataset.mark;
+        setMark(iid, m==='clear'?null:m, 'weapon', godRollInstanceIds);
+        renderGodRoll();
+      });
+    });
+  });
 }
 
 function openCompare(instanceIds, type) {
@@ -1444,7 +1710,7 @@ function renderCompare(instanceIds, type) {
 
 function setMark(instanceId, mark, type, instanceIds) {
   saveMark(instanceId, mark);
-  renderCompare(instanceIds, type);
+  if (type!=='weapon') renderCompare(instanceIds, type);
   if (type==='weapon' && activeWeaponBHash && activeWeaponType) {
     selectWeaponType(activeWeaponBHash, activeWeaponType);
   } else if (type==='armor' && activeArmorClass!==null && activeArmorSlot) {
