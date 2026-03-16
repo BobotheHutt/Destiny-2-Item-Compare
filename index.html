@@ -338,7 +338,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v37</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v39</div>
 
 <!-- Compare overlay -->
 <div id="compareOverlay" class="compare-overlay">
@@ -2206,10 +2206,10 @@ function renderMarkTab(markType) {
   function markBtns(r) {
     const m = getMark(r.iid);
     return `<div style="display:flex;align-items:center;gap:3px;">
-      <button class="mark-btn fav ${getLockBtnClass(r.iid)}" data-iid="${r.iid}" data-mark="fav" data-tab="${markType}" data-pending="" title="${getLockBtnTitle(r.iid)}">🔒</button>
-      <button class="mark-btn junk ${m==='junk'?'active':''}" data-iid="${r.iid}" data-mark="junk" data-tab="${markType}" data-pending="">J</button>
-      <button class="mark-btn infuse ${m==='infuse'?'active':''}" data-iid="${r.iid}" data-mark="infuse" data-tab="${markType}" data-pending="">&#9889;</button>
-      <button class="mark-btn clear-btn" data-iid="${r.iid}" data-mark="clear" data-tab="${markType}" data-pending="">&#215;</button>
+      <button class="mark-btn fav ${getLockBtnClass(r.iid)}" data-iid="${r.iid}" data-mark="fav" data-tab="${markType}" data-pending="" title="${getLockBtnTitle(r.iid)}" style="padding:4px 10px;font-size:13px;">🔒</button>
+      <button class="mark-btn junk ${m==='junk'?'active':''}" data-iid="${r.iid}" data-mark="junk" data-tab="${markType}" data-pending="" style="padding:4px 10px;font-size:12px;">Junk</button>
+      <button class="mark-btn infuse ${m==='infuse'?'active':''}" data-iid="${r.iid}" data-mark="infuse" data-tab="${markType}" data-pending="" style="padding:4px 10px;font-size:13px;">&#9889;</button>
+      <button class="mark-btn clear-btn" data-iid="${r.iid}" data-mark="clear" data-tab="${markType}" data-pending="" style="padding:4px 10px;font-size:13px;">&#215;</button>
       <button class="confirm-mark-btn" data-iid="${r.iid}" data-tab="${markType}" style="display:none;background:var(--fav);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;cursor:pointer;">OK</button>
     </div>`;
   }
@@ -2257,7 +2257,6 @@ function renderMarkTab(markType) {
       const slot = slotMap[slotName];
       const totalItems = Object.values(slot.names).flat().length;
       const accordionKey = `${markType}:${category}:${slotName}`;
-      const isSlotOpen = (openNameAccordions[markType]||{})[accordionKey] !== false; // default open
 
       const nameAccs = Object.entries(slot.names).map(([name, nameRows])=>{
         const def = getItemDef(nameRows[0].item.itemHash);
@@ -2295,7 +2294,8 @@ function renderMarkTab(markType) {
         </div>`;
       }).join('');
 
-      // Slot sub-accordion
+      // Slot sub-accordion — collapsed by default (undefined = closed)
+      const isSlotOpen = (openNameAccordions[markType]||{})[accordionKey] === true;
       return `<div class="accordion" style="margin-bottom:4px;">
         <div class="accordion-header ${isSlotOpen?'open':''}" data-rawkey="${encodeURIComponent(accordionKey)}" data-tab="${markType}" data-slot-acc="1">
           <span class="accordion-title">${slotName}</span>
@@ -2308,18 +2308,13 @@ function renderMarkTab(markType) {
       </div>`;
     }).join('');
 
-    // Top-level category accordion
-    const catKey = `${markType}:${category}`;
-    const isCatOpen = (openNameAccordions[markType]||{})[catKey] !== false; // default open
-    return `<div class="accordion" style="margin-bottom:8px;">
-      <div class="accordion-header ${isCatOpen?'open':''}" data-rawkey="${encodeURIComponent(catKey)}" data-tab="${markType}" data-cat-acc="1">
-        <span class="accordion-title" style="font-size:14px;">${category}s</span>
-        <span style="display:flex;align-items:center;gap:8px;">
-          <span class="accordion-count">${catRows.length} items</span>
-          <span class="accordion-arrow">▼</span>
-        </span>
+    // Category = plain section header, not collapsible
+    return `<div style="margin-bottom:16px;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text);padding:10px 0 8px;border-bottom:2px solid var(--accent);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+        <span>${category}s</span>
+        <span style="font-size:11px;font-weight:400;color:var(--text-dim);letter-spacing:.04em;">${catRows.length} items</span>
       </div>
-      <div class="accordion-body ${isCatOpen?'open':''}" style="padding:8px 0 0;">${slotsHtml}</div>
+      ${slotsHtml}
     </div>`;
   }
 
@@ -2345,14 +2340,13 @@ function renderMarkTab(markType) {
     </div>
     ${weaponsHtml}${armorHtml}`;
 
-  // Accordion toggles (category + slot)
-  panel.querySelectorAll('.accordion-header[data-cat-acc], .accordion-header[data-slot-acc]').forEach(hdr=>{
+  // Slot accordion toggles
+  panel.querySelectorAll('.accordion-header[data-slot-acc]').forEach(hdr=>{
     hdr.addEventListener('click', ()=>{
       const rawKey = decodeURIComponent(hdr.dataset.rawkey);
       const tab = hdr.dataset.tab;
       if (!openNameAccordions[tab]) openNameAccordions[tab]={};
-      // Toggle — default is open (undefined=open), so first click closes
-      openNameAccordions[tab][rawKey] = !(openNameAccordions[tab][rawKey] !== false);
+      openNameAccordions[tab][rawKey] = !openNameAccordions[tab][rawKey];
       renderMarkTab(tab);
     });
   });
