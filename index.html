@@ -354,7 +354,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v42</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v43</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -371,9 +371,17 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
         <canvas class="swatch-canvas" width="58" height="44" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
         <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.7);">Stars</span>
       </div>
-      <div class="theme-swatch" data-theme="class" title="Class" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
-        <div class="swatch-class-preview" style="position:absolute;inset:0;"></div>
-        <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.7);">Class</span>
+      <div class="theme-swatch" data-theme="class-0" title="Titan" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(200,168,75,0.4) 0%,transparent 70%);border-bottom:2px solid rgba(200,168,75,0.5);"></div>
+        <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.8);">Titan</span>
+      </div>
+      <div class="theme-swatch" data-theme="class-1" title="Hunter" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(74,159,212,0.4) 0%,transparent 70%);border-bottom:2px solid rgba(74,159,212,0.5);"></div>
+        <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.8);">Hunter</span>
+      </div>
+      <div class="theme-swatch" data-theme="class-2" title="Warlock" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(155,111,196,0.4) 0%,transparent 70%);border-bottom:2px solid rgba(155,111,196,0.5);"></div>
+        <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.8);">Warlock</span>
       </div>
       <div class="theme-swatch" data-theme="destiny" title="Destiny UI" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
         <svg style="position:absolute;inset:0;width:100%;height:100%;" viewBox="0 0 58 44"><polygon points="29,4 52,17 52,39 29,44 6,39 6,17" fill="none" stroke="rgba(200,168,75,0.4)" stroke-width="1"/><line x1="0" y1="0" x2="29" y2="22" stroke="rgba(200,168,75,0.15)" stroke-width="8"/></svg>
@@ -892,7 +900,10 @@ function renderCharacters(characters, charEquip, profile) {
   // Apply class-based theme
   const lastClass = lastChar?.classType;
   window._lastCharClass = lastClass;
-  applyClassTheme(lastClass);
+  // If user hasn't picked a theme yet, auto-select their class
+  if (!localStorage.getItem('d2theme') && lastClass !== undefined) {
+    currentTheme = `class-${lastClass}`;
+  }
   // Re-apply full theme so accent auto-detect uses loaded inventory
   applyTheme(currentTheme, currentAccent);
 
@@ -2507,9 +2518,13 @@ function applyTheme(theme, accent) {
     root.style.setProperty('--theme-glow', 'rgba(0,0,0,0)');
     root.style.setProperty('--theme-line', 'rgba(0,0,0,0)');
     startStarfield();
+  } else if (theme.startsWith('class-')) {
+    const classType = Number(theme.split('-')[1]);
+    const t = CLASS_THEMES[classType] || CLASS_THEMES[0];
+    root.style.setProperty('--theme-glow', t.glow);
+    root.style.setProperty('--theme-line', t.line);
   } else if (theme === 'class') {
-    const cls = profileLoaded ? (allItems.find(i=>i.equipped && WEAPON_BUCKETS.has(getEffectiveBucketHash(i))) ? null : null) : null;
-    // Use last char class from profileInfo if available
+    // legacy fallback — use last played class
     const classType = window._lastCharClass ?? 0;
     const t = CLASS_THEMES[classType] || CLASS_THEMES[0];
     root.style.setProperty('--theme-glow', t.glow);
@@ -2594,11 +2609,13 @@ function startStarfield() {
 }
 
 function updateThemePickerUI() {
+  // Update theme swatch active states — handles class-0/1/2
   document.querySelectorAll('.theme-swatch').forEach(el => {
     const active = el.dataset.theme === currentTheme;
     el.style.border = active ? `2px solid var(--accent)` : '2px solid transparent';
     el.style.boxShadow = active ? '0 0 8px var(--accent)' : 'none';
   });
+
   document.querySelectorAll('.accent-swatch').forEach(el => {
     const active = el.dataset.accent === currentAccent;
     el.style.border = active ? `2px solid var(--accent)` : '2px solid rgba(255,255,255,0.2)';
@@ -2606,7 +2623,7 @@ function updateThemePickerUI() {
     el.style.transform = active ? 'scale(1.15)' : 'scale(1)';
   });
 
-  // Draw swatch previews
+  // Draw starfield swatch preview
   const swatchCanvas = document.querySelector('.theme-swatch[data-theme="starfield"] .swatch-canvas');
   if (swatchCanvas) {
     const sc = swatchCanvas.getContext('2d');
@@ -2620,14 +2637,6 @@ function updateThemePickerUI() {
       sc.fillStyle = `rgba(255,255,255,${Math.random()*0.8+0.2})`;
       sc.fill();
     }
-  }
-  // Class swatch preview
-  const classPreview = document.querySelector('.swatch-class-preview');
-  if (classPreview) {
-    const cls = window._lastCharClass ?? 0;
-    const colors = ['#c8a84b','#4a9fd4','#9b6fc4'];
-    classPreview.style.background = `radial-gradient(ellipse at 50% 0%, ${colors[cls]}33 0%, transparent 70%)`;
-    classPreview.style.borderBottom = `2px solid ${colors[cls]}66`;
   }
 }
 
