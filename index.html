@@ -204,6 +204,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 .mark-btn.junk { color:var(--junk); border-color:var(--junk); }
 .mark-btn.infuse { color:var(--infuse); border-color:var(--infuse); }
 .mark-btn.fav.active { background:var(--fav); color:#0a0c0f; }
+.mark-btn.fav.pending { background:rgba(200,168,75,0.25); color:var(--accent); border-color:var(--accent); } /* amber = pending sync */
 .mark-btn.junk.active { background:var(--junk); color:#fff; }
 .mark-btn.infuse.active { background:var(--infuse); color:#fff; }
 .mark-btn.clear-btn { color:var(--text-dim); border-color:var(--border2); }
@@ -307,7 +308,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
       <button class="main-tab active" onclick="switchMain('characters')">Characters</button>
       <button class="main-tab" onclick="switchMain('weapons')">Weapons</button>
       <button class="main-tab" onclick="switchMain('armor')">Armor</button>
-      <button class="main-tab" onclick="switchMain('favorites')">Favorites</button>
+      <button class="main-tab" onclick="switchMain('favorites')">Locked</button>
       <button class="main-tab" onclick="switchMain('junk')">Junk</button>
     </div>
     <div id="panel-characters" class="main-panel active"></div>
@@ -318,7 +319,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v31</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v32</div>
 
 <!-- Compare overlay -->
 <div id="compareOverlay" class="compare-overlay">
@@ -344,7 +345,7 @@ const RARITY       = {6:'exotic',5:'legendary',4:'rare',3:'uncommon',2:'common'}
 
 const WEAPON_BUCKET_NAMES = {1498876634:'Kinetic',2465295065:'Energy',953998645:'Heavy'};
 const ARMOR_BUCKET_NAMES  = {3448274439:'Helmet',3551918588:'Gauntlets',14239492:'Chest',20886954:'Legs',1585787867:'Class Item'};
-const GENERAL_BUCKETS     = new Set([4023194814,1107761855,2025709351]);
+const GENERAL_BUCKETS     = new Set([4023194814,284967655,2025709351]); // Ghost, Ship, Sparrow
 const WEAPON_BUCKETS      = new Set([1498876634,2465295065,953998645]);
 const ARMOR_BUCKETS       = new Set([3448274439,3551918588,14239492,20886954,1585787867]);
 const VAULT_BUCKET        = 138197802;
@@ -360,6 +361,8 @@ let manifestStats = {};
 let manifestPerks = {};
 let manifestPlugSets = {};
 let allItems      = []; // all weapon+armor items across chars+vault
+let profileLoaded = false;
+let inGameLockState = {}; // instanceId -> bool (true = locked in game)
 let instanceData  = {};
 let socketData    = {};
 let statsData     = {};
@@ -369,7 +372,7 @@ let oauthToken    = localStorage.getItem('d2oauth_token') || null;
 let oauthExpiry   = Number(localStorage.getItem('d2oauth_expiry') || 0);
 let profileInfo   = {};
 
-let weaponFilter  = {exotic:false, legendary:true};
+let weaponFilter  = {exotic:false, legendary:true, dupes:false};
 let armorFilter   = {exotic:false, legendary:true};
 let activeWeaponCategory = null;
 let activeWeaponType     = null;
@@ -385,39 +388,133 @@ function saveMark(instanceId, mark) {
 }
 function getMark(instanceId) { return marks[instanceId] || null; }
 
+// 3-state lock button class:
+// '' = unlocked (not in app, not in game)
+// 'active' = locked in app AND matches game (synced)
+// 'pending' = locked in app but NOT matching game (needs sync)
+function getLockBtnClass(instanceId) {
+  const appLocked = getMark(instanceId) === 'fav';
+  const gameLocked = inGameLockState[instanceId] || false;
+  if (!appLocked && !gameLocked) return '';        // unlocked both
+  if (appLocked && gameLocked) return 'active';    // synced
+  return 'pending';                                // pending change
+}
+
+// Lock button tooltip
+function getLockBtnTitle(instanceId) {
+  const appLocked = getMark(instanceId) === 'fav';
+  const gameLocked = inGameLockState[instanceId] || false;
+  if (appLocked && gameLocked) return 'Locked — synced with game';
+  if (appLocked && !gameLocked) return 'Locked — pending sync to game';
+  if (!appLocked && gameLocked) return 'Unlocked in app — pending sync (will unlock in game)';
+  return 'Unlocked';
+}
+
+async function syncLocksToGame() {
+  const btn = document.getElementById('syncLocksBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+  const headers = {'X-API-Key': BUNGIE_API_KEY, 'Authorization': `Bearer ${oauthToken}`, 'Content-Type': 'application/json'};
+  const {membershipType} = profileInfo;
+
+  // Find all items that need syncing
+  const toSync = allItems.filter(i => {
+    if (!i.itemInstanceId) return false;
+    const appLocked = getMark(i.itemInstanceId) === 'fav';
+    const gameLocked = inGameLockState[i.itemInstanceId] || false;
+    return appLocked !== gameLocked;
+  });
+
+  if (!toSync.length) {
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Already in sync'; }
+    setTimeout(()=>{ if(btn){ btn.disabled=false; btn.textContent='Sync to Game'; } }, 2000);
+    return;
+  }
+
+  let success = 0, failed = 0;
+  for (const item of toSync) {
+    const appLocked = getMark(item.itemInstanceId) === 'fav';
+    // Need characterId - vault items use first character
+    const characterId = item.characterId || profileInfo.characterIds?.[0] || '';
+    try {
+      const resp = await fetch('https://www.bungie.net/Platform/Destiny2/Actions/Items/SetLockState/', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          state: appLocked,
+          itemId: item.itemInstanceId,
+          characterId: characterId,
+          membershipType
+        })
+      });
+      const data = await resp.json();
+      if (data.ErrorCode === 1) {
+        inGameLockState[item.itemInstanceId] = appLocked;
+        success++;
+      } else {
+        failed++;
+      }
+    } catch(e) { failed++; }
+    // Small delay to avoid rate limit
+    await new Promise(r => setTimeout(r, 150));
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = failed ? `Synced ${success}, ${failed} failed` : `✓ Synced ${success} items`;
+    setTimeout(()=>{ if(btn) btn.textContent='Sync to Game'; }, 3000);
+  }
+  renderMarkTab('fav');
+}
+
 function getItemDef(hash) { return manifestItems[hash] || manifestItems[hash>>>0] || null; }
 function getStatDef(hash) { return manifestStats[hash] || manifestStats[hash>>>0] || null; }
 function getPerkDef(hash) { return manifestPerks[hash] || manifestPerks[hash>>>0] || null; }
 
-const DAMAGE_TYPE_ICONS = {
-  1: '/img/destiny_content/damage_types/destiny2/kinetic.png',        // Kinetic
-  2: '/img/destiny_content/damage_types/destiny2/arc.png',            // Arc
-  3: '/img/destiny_content/damage_types/destiny2/thermal.png',        // Solar
-  4: '/img/destiny_content/damage_types/destiny2/void.png',           // Void
-  6: '/img/destiny_content/damage_types/destiny2/stasis.png',         // Stasis
-  7: '/img/destiny_content/damage_types/destiny2/strand.png',         // Strand
-};
-const AMMO_TYPE_ICONS = {
-  1: '/img/destiny_content/damage_types/destiny2/kinetic_ammo.png',   // Primary
-  2: '/img/destiny_content/damage_types/destiny2/special_ammo.png',   // Special
-  3: '/img/destiny_content/damage_types/destiny2/heavy_ammo.png',     // Heavy
-};
-const CLASS_ICONS = {
-  0: '/img/destiny_content/seasons/icons/s13_titan_icon.png',
-  1: '/img/destiny_content/seasons/icons/s13_hunter_icon.png',
-  2: '/img/destiny_content/seasons/icons/s13_warlock_icon.png',
-};
+// Damage/ammo icons pulled from manifest at runtime (populated after manifest loads)
+let manifestDamageTypes = {}; // damageTypeEnum -> icon path
+let manifestEnergyTypes = {}; // energyTypeHash -> icon path
+
+function buildDamageIconMap() {
+  // DestinyDamageTypeDefinition: keyed by hash, has .damageTypeEnumValue and .displayProperties.icon
+  // We also check DestinyEnergyTypeDefinition for ammo type icons via item.equippingBlock.ammoType
+  // Fallback: use known Bungie CDN paths per enum value
+  const FALLBACK_DMG = {
+    1: '/img/destiny_content/damage_types/destiny2/kinetic.png',
+    2: '/img/destiny_content/damage_types/destiny2/arc.png',
+    3: '/img/destiny_content/damage_types/destiny2/thermal.png',
+    4: '/img/destiny_content/damage_types/destiny2/void.png',
+    6: '/img/destiny_content/damage_types/destiny2/stasis.png',
+    7: '/img/destiny_content/damage_types/destiny2/strand.png',
+  };
+  const FALLBACK_AMMO = {
+    1: '/img/destiny_content/damage_types/destiny2/kinetic_ammo.png',
+    2: '/img/destiny_content/damage_types/destiny2/special_ammo.png',
+    3: '/img/destiny_content/damage_types/destiny2/heavy_ammo.png',
+  };
+  // Try to pull from manifest items - find a sample weapon per damage type to get real icon
+  // Use the item's defaultDamageTypeHash -> look up in DestinyDamageTypeDefinition if available
+  // For now use fallbacks but look for icons in manifestItems definitions
+  manifestDamageTypes = FALLBACK_DMG;
+  manifestEnergyTypes = FALLBACK_AMMO;
+}
+
 function damageIcon(def) {
-  const dt = def?.defaultDamageType;
-  const path = DAMAGE_TYPE_ICONS[dt];
+  if (!def) return '';
+  const dt = def.defaultDamageType;
+  if (!dt || dt === 0) return '';
+  // Try to get icon from a known damage type definition in manifest items
+  // Look for DestinyDamageTypeDefinition-style entries
+  const path = manifestDamageTypes[dt];
   if (!path) return '';
-  return `<img src="https://www.bungie.net${path}" style="width:14px;height:14px;vertical-align:middle;opacity:0.85;" />`;
+  return `<img src="https://www.bungie.net${path}" style="width:14px;height:14px;vertical-align:middle;opacity:0.9;" onerror="this.style.display='none'" />`;
 }
 function ammoIcon(def) {
-  const at = def?.equippingBlock?.ammoType;
-  const path = AMMO_TYPE_ICONS[at];
+  if (!def) return '';
+  const at = def.equippingBlock?.ammoType;
+  if (!at || at === 0) return '';
+  const path = manifestEnergyTypes[at];
   if (!path) return '';
-  return `<img src="https://www.bungie.net${path}" style="width:14px;height:14px;vertical-align:middle;opacity:0.85;" />`;
+  return `<img src="https://www.bungie.net${path}" style="width:14px;height:14px;vertical-align:middle;opacity:0.9;" onerror="this.style.display='none'" />`;
 }
 function itemRarity(def) { return def?.inventory?.tierType || 0; }
 function rarityKey(def)  { return RARITY[itemRarity(def)] || 'common'; }
@@ -533,9 +630,8 @@ function updateOAuthStatus() {
   const el = document.getElementById('oauthStatus');
   if (!el) return;
   if (isOAuthValid()) {
-    el.innerHTML = `<span style="color:var(--fav);">✓ Logged in via Bungie</span>
-      <button onclick="searchPlayer()" style="background:var(--accent);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:5px 16px;cursor:pointer;margin-left:12px;">Load My Guardian</button>
-      <button onclick="oauthLogout()" style="background:none;border:1px solid var(--border2);color:var(--text-dim);font-size:11px;padding:4px 10px;cursor:pointer;margin-left:8px;">Log out</button>`;
+    const loadBtn = profileLoaded ? '' : `<button onclick="searchPlayer()" style="background:var(--accent);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:5px 16px;cursor:pointer;margin-left:12px;">Load My Guardian</button>`;
+    el.innerHTML = `<span style="color:var(--fav);">✓ Logged in via Bungie</span>${loadBtn}<button onclick="oauthLogout()" style="background:none;border:1px solid var(--border2);color:var(--text-dim);font-size:11px;padding:4px 10px;cursor:pointer;margin-left:8px;">Log out</button>`;
   } else {
     el.innerHTML = `<button onclick="oauthLogin()" style="background:var(--accent);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:8px 24px;cursor:pointer;">Login with Bungie</button>
       <span style="color:var(--text-dim);font-size:12px;margin-left:12px;">Sign in to load your guardian inventory</span>`;
@@ -562,7 +658,7 @@ async function searchPlayer() {
     const primary = meData.Response?.primaryMembershipId;
     const membership = destinyMemberships.find(m=>m.membershipId===primary) || destinyMemberships[0];
     const {membershipType,membershipId,bungieGlobalDisplayName,bungieGlobalDisplayNameCode} = membership;
-    profileInfo = {membershipType,membershipId,name:bungieGlobalDisplayName||meData.Response?.bungieNetUser?.displayName||'Guardian',code:bungieGlobalDisplayNameCode||0,platform:PLATFORMS[membershipType]||`Type ${membershipType}`};
+    profileInfo = {membershipType,membershipId,name:bungieGlobalDisplayName||meData.Response?.bungieNetUser?.displayName||'Guardian',code:bungieGlobalDisplayNameCode||0,platform:PLATFORMS[membershipType]||`Type ${membershipType}`,characterIds:[]};
 
     setLoading('Loading inventory…');
     const components = '100,102,200,201,205,300,304,305,307,308,309,310';
@@ -578,13 +674,20 @@ async function searchPlayer() {
       const md = await mr.json();
       const base = md.Response.jsonWorldComponentContentPaths.en;
       setLoading('Downloading item definitions…');
-      const [items,stats,perks,plugSets] = await Promise.all([
+      const [items,stats,perks,plugSets,damageTypes] = await Promise.all([
         fetch('https://www.bungie.net'+base.DestinyInventoryItemDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyStatDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinySandboxPerkDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyPlugSetDefinition).then(r=>r.json()),
+        fetch('https://www.bungie.net'+base.DestinyDamageTypeDefinition).then(r=>r.json()),
       ]);
       manifestItems = items; manifestStats = stats; manifestPerks = perks; manifestPlugSets = plugSets;
+      // Build damage type icon map from manifest
+      Object.values(damageTypes).forEach(dt => {
+        const enumVal = dt.enumValue;
+        const icon = dt.displayProperties?.hasIcon ? dt.displayProperties.icon : null;
+        if (enumVal && icon) manifestDamageTypes[enumVal] = icon;
+      });
     }
 
     hideLoading();
@@ -642,22 +745,29 @@ async function searchPlayer() {
     function normItem(i) { return {...i, bucketHash: Number(i.bucketHash), itemHash: Number(i.itemHash)}; }
     allItems = [];
     characters.sort((a,b)=>new Date(b.dateLastPlayed)-new Date(a.dateLastPlayed));
+    profileInfo.characterIds = characters.map(c=>c.characterId);
     characters.forEach(c=>{
       const loc = CLASS_NAMES[c.classType]||'Character';
-      (charEquip[c.characterId]?.items||[]).forEach(i=>allItems.push({...normItem(i),loc,equipped:true}));
-      (charInv[c.characterId]?.items||[]).forEach(i=>allItems.push({...normItem(i),loc,equipped:false}));
+      (charEquip[c.characterId]?.items||[]).forEach(i=>allItems.push({...normItem(i),loc,equipped:true,characterId:c.characterId}));
+      (charInv[c.characterId]?.items||[]).forEach(i=>allItems.push({...normItem(i),loc,equipped:false,characterId:c.characterId}));
     });
-    // Vault items — include ALL items, not just weapon/armor buckets
-    profileInv2.forEach(i=>allItems.push({...normItem(i),loc:'Vault',equipped:false}));
+    profileInv2.forEach(i=>allItems.push({...normItem(i),loc:'Vault',equipped:false,characterId:null}));
 
-    // Debug
-    const weaponItems = allItems.filter(i=>WEAPON_BUCKETS.has(i.bucketHash));
-    const armorItems  = allItems.filter(i=>ARMOR_BUCKETS.has(i.bucketHash));
+    // Read in-game lock state (state bitmask bit 1 = locked/favorited)
+    // Store in-game lock state separately so we can detect pending changes
+    inGameLockState = {};
+    allItems.forEach(i=>{
+      if (i.itemInstanceId) {
+        inGameLockState[i.itemInstanceId] = !!(i.state & 1);
+      }
+    });
 
     renderCharacters(characters, charEquip, profile);
     renderWeaponsTab();
     renderArmorTab();
     document.getElementById('app').style.display='block';
+    profileLoaded = true;
+    updateOAuthStatus(); // hide "Load My Guardian" button now that we're loaded
 
   } catch(err) {
     hideLoading();
@@ -741,6 +851,7 @@ function renderWeaponsTab() {
       <div class="toggle-group">
         <button class="toggle-btn exotic ${weaponFilter.exotic?'active':''}" onclick="toggleWeaponFilter('exotic',this)">Exotic</button>
         <button class="toggle-btn legendary ${weaponFilter.legendary?'active':''}" onclick="toggleWeaponFilter('legendary',this)">Legendary</button>
+        <button class="toggle-btn ${weaponFilter.dupes?'active':''}" onclick="toggleWeaponFilter('dupes',this)" style="border-color:var(--accent);color:${weaponFilter.dupes?'#0a0c0f':'var(--accent)'};">Dupes Only</button>
       </div>
     </div>
     <div id="weaponAccordions"></div>
@@ -769,7 +880,7 @@ function getEffectiveBucketHash(item) {
 }
 
 function getFilteredWeapons() {
-  return allItems.filter(i=>{
+  const base = allItems.filter(i=>{
     if (!WEAPON_BUCKETS.has(getEffectiveBucketHash(i))) return false;
     const def = getItemDef(i.itemHash);
     if (!def) return false;
@@ -779,6 +890,17 @@ function getFilteredWeapons() {
     if (tier<5) return false;
     return true;
   });
+  if (!weaponFilter.dupes) return base;
+  // Dupes only: keep items whose name appears 2+ times
+  const nameCounts = {};
+  base.forEach(i=>{
+    const n = getItemDef(i.itemHash)?.displayProperties?.name||'';
+    nameCounts[n] = (nameCounts[n]||0)+1;
+  });
+  return base.filter(i=>{
+    const n = getItemDef(i.itemHash)?.displayProperties?.name||'';
+    return nameCounts[n] >= 2;
+  });
 }
 
 function buildWeaponAccordions() {
@@ -786,13 +908,22 @@ function buildWeaponAccordions() {
   const cats = [1498876634,2465295065,953998645];
   const html = cats.map(bHash=>{
     const label = WEAPON_BUCKET_NAMES[bHash];
-    const count = weapons.filter(w=>getEffectiveBucketHash(w)===bHash).length;
+    const bucketWeapons = weapons.filter(w=>getEffectiveBucketHash(w)===bHash);
+    let countLabel;
+    if (weaponFilter.dupes) {
+      // Count unique names (each = one dupe group)
+      const uniqueNames = new Set(bucketWeapons.map(w=>getItemDef(w.itemHash)?.displayProperties?.name||''));
+      countLabel = `${uniqueNames.size} dupe group${uniqueNames.size!==1?'s':''}`;
+    } else {
+      countLabel = `${bucketWeapons.length} items`;
+    }
+    const count = bucketWeapons.length;
     const isOpen = activeWeaponCategory===bHash;
     return `<div class="accordion">
       <div class="accordion-header ${isOpen?'open':''}" onclick="toggleWeaponCat(${bHash},this)">
         <span class="accordion-title">${label}</span>
         <span style="display:flex;align-items:center;gap:8px;">
-          <span class="accordion-count">${count} items</span>
+          <span class="accordion-count">${countLabel}</span>
           <span class="accordion-arrow">▼</span>
         </span>
       </div>
@@ -820,14 +951,19 @@ function buildWeaponTypes(bHash) {
   weapons.forEach(w=>{
     const def = getItemDef(w.itemHash);
     const type = def?.itemTypeDisplayName||'Unknown';
-    if (!typeMap[type]) typeMap[type]=0;
-    typeMap[type]++;
+    const name = def?.displayProperties?.name||'';
+    if (!typeMap[type]) typeMap[type]={items:0, names:new Set()};
+    typeMap[type].items++;
+    typeMap[type].names.add(name);
   });
   if (!Object.keys(typeMap).length) return '<div class="no-items">No items found.</div>';
-  return `<div class="type-grid">${Object.entries(typeMap).sort((a,b)=>b[1]-a[1]).map(([type,count])=>
-    `<div class="type-pill ${activeWeaponType===type?'active':''}" onclick="selectWeaponType('${bHash}','${type.replace(/'/g,"\\'")}')">
-      ${type} <span class="pill-count">${count}</span>
-    </div>`).join('')}</div>`;
+  return `<div class="type-grid">${Object.entries(typeMap).sort((a,b)=>b[1].items-a[1].items).map(([type,data])=>{
+    const pillCount = weaponFilter.dupes ? data.names.size : data.items;
+    const pillLabel = weaponFilter.dupes ? `${pillCount} group${pillCount!==1?'s':''}` : pillCount;
+    return `<div class="type-pill ${activeWeaponType===type?'active':''}" onclick="selectWeaponType('${bHash}','${type.replace(/'/g,"\\'")}')">
+      ${type} <span class="pill-count">${pillLabel}</span>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 // Global click map — avoids inline JSON/quote issues
@@ -846,8 +982,12 @@ function selectWeaponType(bHash, type) {
     if (!nameMap[name]) nameMap[name]=[];
     nameMap[name].push(w);
   });
+  // If dupes filter on, only show names with 2+ copies
+  const filteredNameMap = weaponFilter.dupes
+    ? Object.fromEntries(Object.entries(nameMap).filter(([,items])=>items.length>=2))
+    : nameMap;
   let keyIdx = Date.now(); // unique keys each render
-  const gridHtml = Object.entries(nameMap).map(([name,items])=>{
+  const gridHtml = Object.entries(filteredNameMap).map(([name,items])=>{
     const def = getItemDef(items[0].itemHash);
     const icon = def?.displayProperties?.hasIcon?`<img src="https://www.bungie.net${def.displayProperties.icon}" />`:'';
     const rk = rarityKey(def);
@@ -871,7 +1011,7 @@ function selectWeaponType(bHash, type) {
   const gridEl = document.getElementById('weaponItemGrid');
   gridEl.innerHTML = `
     <div class="item-grid-section">
-      <div class="item-grid-title">${type} <span style="color:var(--text-dim);font-size:10px;margin-left:4px;">${ofType.length} items · ${Object.keys(nameMap).length} unique</span></div>
+      <div class="item-grid-title">${type} <span style="color:var(--text-dim);font-size:10px;margin-left:4px;">${weaponFilter.dupes ? Object.keys(filteredNameMap).length + ' dupe groups' : ofType.length + ' items · ' + Object.keys(filteredNameMap).length + ' unique'}</span></div>
       <div class="item-grid">${gridHtml}</div>
     </div>`;
   gridEl.querySelectorAll('.grid-item').forEach(node=>{
@@ -1263,7 +1403,7 @@ function renderGodRoll() {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:${scoreColor};">${anySelected?pct+'%':''}</div>
           <div class="mark-row" data-iid="${iid}" data-type="weapon" style="display:flex;gap:3px;">
-            <button class="mark-btn fav ${mark==='fav'?'active':''}" data-mark="fav" style="padding:3px 7px;font-size:10px;">★ Fav</button>
+            <button class="mark-btn fav ${getLockBtnClass(iid)}" data-mark="fav" style="padding:3px 7px;font-size:10px;" title="${getLockBtnTitle(iid)}">🔒 Lock</button>
             <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:3px 7px;font-size:10px;">Junk</button>
             <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:3px 7px;font-size:10px;">Infuse</button>
             <button class="mark-btn clear-btn" data-mark="clear" style="padding:3px 7px;font-size:10px;">✕</button>
@@ -1275,7 +1415,7 @@ function renderGodRoll() {
   }).join('') : `<div style="color:var(--text-muted);font-size:13px;padding:20px;text-align:center;">No weapons match your exact roll filter.</div>`;
 
   document.getElementById('compareContent').innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;padding-right:40px;">
       <div class="compare-title" style="margin-bottom:0;">${weaponName} — ${godRollInstanceIds.length} ${godRollInstanceIds.length===1?'copy':'copies'}</div>
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;">
         <input type="checkbox" id="grExactOnly" ${godRollExactOnly?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
@@ -1448,7 +1588,7 @@ function renderArmorGodRoll() {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
           ${scoreDisplay}
           <div class="mark-row" data-iid="${iid}" data-type="armor" style="display:flex;gap:3px;">
-            <button class="mark-btn fav ${mark==='fav'?'active':''}" data-mark="fav" style="padding:3px 7px;font-size:10px;">★ Fav</button>
+            <button class="mark-btn fav ${getLockBtnClass(iid)}" data-mark="fav" style="padding:3px 7px;font-size:10px;" title="${getLockBtnTitle(iid)}">🔒 Lock</button>
             <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:3px 7px;font-size:10px;">Junk</button>
             <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:3px 7px;font-size:10px;">Infuse</button>
             <button class="mark-btn clear-btn" data-mark="clear" style="padding:3px 7px;font-size:10px;">✕</button>
@@ -1802,7 +1942,7 @@ function renderCompare(instanceIds, type) {
         </div>
         <div class="mark-row" data-iid="${iid}" data-type="${type}" style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
           <div style="display:flex;gap:3px;">
-            <button class="mark-btn fav ${mark==='fav'?'active':''}" data-mark="fav" style="padding:4px 8px;font-size:11px;">★ Fav</button>
+            <button class="mark-btn fav ${getLockBtnClass(iid)}" data-mark="fav" style="padding:4px 8px;font-size:11px;" title="${getLockBtnTitle(iid)}">🔒 Lock</button>
             <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:4px 8px;font-size:11px;">Junk</button>
             <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:4px 8px;font-size:11px;">Infuse</button>
             <button class="mark-btn clear-btn" data-mark="clear" style="padding:4px 8px;font-size:11px;">✕</button>
@@ -1931,7 +2071,7 @@ function buildMarkRows(markType) {
 function renderMarkTab(markType) {
   const panelId = markType==='junk'?'panel-junk':'panel-favorites';
   const panel   = document.getElementById(panelId);
-  const emptyLabel = markType==='junk'?'No items marked as junk yet.':'No items marked as favorite yet.';
+  const emptyLabel = markType==='junk'?'No items marked as junk yet.':'No items marked as locked yet.';
   const accentColor = markType==='junk'?'var(--junk)':'var(--fav)';
 
   const rows = buildMarkRows(markType);
@@ -1976,7 +2116,7 @@ function renderMarkTab(markType) {
   function markBtns(r) {
     const m = getMark(r.iid);
     return `<div style="display:flex;align-items:center;gap:3px;">
-      <button class="mark-btn fav ${m==='fav'?'active':''}" data-iid="${r.iid}" data-mark="fav" data-tab="${markType}" data-pending="">&#9733;</button>
+      <button class="mark-btn fav ${getLockBtnClass(r.iid)}" data-iid="${r.iid}" data-mark="fav" data-tab="${markType}" data-pending="" title="${getLockBtnTitle(r.iid)}">🔒</button>
       <button class="mark-btn junk ${m==='junk'?'active':''}" data-iid="${r.iid}" data-mark="junk" data-tab="${markType}" data-pending="">J</button>
       <button class="mark-btn infuse ${m==='infuse'?'active':''}" data-iid="${r.iid}" data-mark="infuse" data-tab="${markType}" data-pending="">&#9889;</button>
       <button class="mark-btn clear-btn" data-iid="${r.iid}" data-mark="clear" data-tab="${markType}" data-pending="">&#215;</button>
@@ -2048,9 +2188,19 @@ function renderMarkTab(markType) {
   }).join('');
 
   const doneCount = rows.filter(r=>getDimDone(r.iid)).length;
+  const pendingCount = markType==='fav' ? rows.filter(r=>{
+    const appLocked = getMark(r.iid)==='fav';
+    const gameLocked = inGameLockState[r.iid]||false;
+    return appLocked !== gameLocked;
+  }).length : 0;
+  const syncBtn = markType==='fav' ? `<button id="syncLocksBtn" onclick="syncLocksToGame()"
+    style="background:${pendingCount?'var(--accent)':'var(--surface2)'};color:${pendingCount?'#0a0c0f':'var(--text-muted)'};border:1px solid ${pendingCount?'var(--accent)':'var(--border2)'};font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:5px 14px;cursor:pointer;">
+    ${pendingCount?`Sync to Game (${pendingCount} pending)`:'Sync to Game'}
+  </button>` : '';
   panel.innerHTML = `
     <div class="mark-controls">
       <span style="font-size:13px;color:var(--text-muted);">${rows.length} items &#183; <span style="color:${accentColor}">${doneCount} done in DIM</span></span>
+      ${syncBtn}
       <button class="unmark-btn" id="clearDimBtn" data-tab="${markType}" style="margin-left:auto;">Clear all DIM checks</button>
     </div>
     ${slotsHtml}`;
@@ -2116,12 +2266,19 @@ function renderMarkTab(markType) {
 
 // ===================== INIT =====================
 (async function init() {
-  // Restore saved API key from localStorage
+  buildDamageIconMap(); // init with fallbacks; real icons loaded after manifest
   updateOAuthStatus();
   // Handle OAuth callback redirect - auto-load profile after login
   if (window.location.search.includes('code=')) {
     const ok = await handleOAuthCallback();
     if (ok) searchPlayer();
+  } else if (isOAuthValid()) {
+    // Already logged in - auto-load guardian
+    searchPlayer();
+  } else {
+    // Try token refresh
+    const refreshed = await refreshOAuthToken();
+    if (refreshed) { updateOAuthStatus(); searchPlayer(); }
   }
 })();
 
