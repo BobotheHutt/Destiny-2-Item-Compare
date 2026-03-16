@@ -28,8 +28,8 @@
   --fav: #4caf7d;
   --junk: #e05555;
   --infuse: #4a9fd4;
-  --theme-glow: rgba(200,168,75,0.04);
-  --theme-line: rgba(200,168,75,0.08);
+  --theme-glow: rgba(200,168,75,0.12);
+  --theme-line: rgba(200,168,75,0.06);
 }
 body { background: var(--bg); color: var(--text); font-family: 'Barlow', sans-serif; font-weight: 300; min-height: 100vh; position: relative; }
 body::before {
@@ -48,9 +48,25 @@ body::before {
       var(--theme-line) 41px
     );
 }
-.page { position: relative; z-index: 1; }
-body::before { content:''; position:fixed; inset:0; background-image: linear-gradient(rgba(200,168,75,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(200,168,75,0.025) 1px,transparent 1px); background-size:40px 40px; pointer-events:none; z-index:0; }
-.page { position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:1.5rem 1.5rem 4rem; }
+/* Destiny UI hex + light ray overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 0.8s;
+  background:
+    radial-gradient(ellipse 30% 80% at 15% 50%, rgba(200,168,75,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 20% 60% at 85% 30%, rgba(200,168,75,0.04) 0%, transparent 50%);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='92'%3E%3Cpolygon points='40,2 78,22 78,70 40,90 2,70 2,22' fill='none' stroke='rgba(200,168,75,0.07)' stroke-width='1'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 30% 80% at 15% 50%, rgba(200,168,75,0.05) 0%, transparent 60%);
+  background-size: 80px 92px, 100% 100%;
+}
+body.theme-destiny::after { opacity: 1; }
+.page { position: relative; z-index: 1; max-width:1100px; margin:0 auto; padding:1.5rem 1.5rem 4rem; }
 
 /* Header */
 .header { margin-bottom:1.5rem; display:flex; align-items:center; gap:14px; }
@@ -338,7 +354,39 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v39</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v41</div>
+
+<!-- Starfield canvas -->
+<canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
+
+<!-- Theme Picker Panel -->
+<div id="themePicker" style="position:fixed;bottom:40px;right:14px;z-index:1000;background:var(--surface);border:1px solid var(--border2);padding:12px 14px;width:200px;font-family:'Barlow Condensed',sans-serif;">
+  <div style="font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Theme</div>
+  <div style="display:flex;gap:6px;margin-bottom:12px;">
+    <div class="theme-swatch" data-theme="starfield" title="Starfield" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
+      <canvas class="swatch-canvas" width="58" height="44" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+      <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.7);">Stars</span>
+    </div>
+    <div class="theme-swatch" data-theme="class" title="Class" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
+      <div class="swatch-class-preview" style="position:absolute;inset:0;"></div>
+      <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.7);">Class</span>
+    </div>
+    <div class="theme-swatch" data-theme="destiny" title="Destiny UI" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
+      <svg style="position:absolute;inset:0;width:100%;height:100%;" viewBox="0 0 58 44"><polygon points="29,4 52,17 52,39 29,44 6,39 6,17" fill="none" stroke="rgba(200,168,75,0.4)" stroke-width="1"/><line x1="0" y1="0" x2="29" y2="22" stroke="rgba(200,168,75,0.15)" stroke-width="8"/></svg>
+      <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.7);">Destiny</span>
+    </div>
+  </div>
+  <div style="font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Accent</div>
+  <div style="display:flex;gap:4px;flex-wrap:wrap;">
+    <div class="accent-swatch" data-accent="auto" title="Auto (most used)" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:linear-gradient(135deg,#888 0%,#4a9fd4 33%,#c8a84b 66%,#9b6fc4 100%);position:relative;" title="Auto"></div>
+    <div class="accent-swatch" data-accent="1" title="Kinetic" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#c0c0c8;"></div>
+    <div class="accent-swatch" data-accent="2" title="Arc" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#79c2f4;"></div>
+    <div class="accent-swatch" data-accent="3" title="Solar" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#f07833;"></div>
+    <div class="accent-swatch" data-accent="4" title="Void" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#7857a8;"></div>
+    <div class="accent-swatch" data-accent="6" title="Stasis" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#4d97c4;"></div>
+    <div class="accent-swatch" data-accent="7" title="Strand" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#4fce96;"></div>
+  </div>
+</div>
 
 <!-- Compare overlay -->
 <div id="compareOverlay" class="compare-overlay">
@@ -404,9 +452,9 @@ let compareSort          = 'power';
 
 // Class-based themes: shift accent color and background glow per class
 const CLASS_THEMES = {
-  0: { accent:'#c8a84b', accent2:'#e8c96a', glow:'rgba(200,168,75,0.06)', line:'rgba(200,168,75,0.09)'  }, // Titan - gold
-  1: { accent:'#4a9fd4', accent2:'#6abde8', glow:'rgba(74,159,212,0.06)',  line:'rgba(74,159,212,0.09)' }, // Hunter - blue
-  2: { accent:'#9b6fc4', accent2:'#b88de0', glow:'rgba(155,111,196,0.06)', line:'rgba(155,111,196,0.09)'}, // Warlock - purple
+  0: { accent:'#c8a84b', accent2:'#e8c96a', glow:'rgba(200,168,75,0.15)',  line:'rgba(200,168,75,0.07)'  }, // Titan - gold
+  1: { accent:'#4a9fd4', accent2:'#6abde8', glow:'rgba(74,159,212,0.15)',  line:'rgba(74,159,212,0.07)' }, // Hunter - blue
+  2: { accent:'#9b6fc4', accent2:'#b88de0', glow:'rgba(155,111,196,0.15)', line:'rgba(155,111,196,0.07)'}, // Warlock - purple
 };
 function applyClassTheme(classType) {
   const theme = CLASS_THEMES[classType] || CLASS_THEMES[0];
@@ -838,7 +886,10 @@ function renderCharacters(characters, charEquip, profile) {
 
   // Apply class-based theme
   const lastClass = lastChar?.classType;
+  window._lastCharClass = lastClass;
   applyClassTheme(lastClass);
+  // Re-apply full theme so accent auto-detect uses loaded inventory
+  applyTheme(currentTheme, currentAccent);
 
   const charsHtml = characters.map((c,i)=>{
     const ck = CLASS_KEYS[c.classType]||'unknown';
@@ -2413,10 +2464,185 @@ function renderMarkTab(markType) {
 }
 
 
+// ===================== THEME SYSTEM =====================
+
+const DAMAGE_ACCENTS = {
+  1: { accent:'#b8b8c0', accent2:'#d0d0d8', glow:'rgba(184,184,192,0.12)', line:'rgba(184,184,192,0.06)', name:'Kinetic' },
+  2: { accent:'#79c2f4', accent2:'#a0d8ff', glow:'rgba(121,194,244,0.14)', line:'rgba(121,194,244,0.06)', name:'Arc' },
+  3: { accent:'#f07833', accent2:'#ffa060', glow:'rgba(240,120,51,0.14)',  line:'rgba(240,120,51,0.06)',  name:'Solar' },
+  4: { accent:'#9966cc', accent2:'#b888e8', glow:'rgba(153,102,204,0.14)', line:'rgba(153,102,204,0.06)', name:'Void' },
+  6: { accent:'#4d97c4', accent2:'#80c0e0', glow:'rgba(77,151,196,0.14)',  line:'rgba(77,151,196,0.06)',  name:'Stasis' },
+  7: { accent:'#4fce96', accent2:'#80e8b8', glow:'rgba(79,206,150,0.14)',  line:'rgba(79,206,150,0.06)',  name:'Strand' },
+};
+
+let currentTheme  = localStorage.getItem('d2theme')  || 'destiny';
+let currentAccent = localStorage.getItem('d2accent') || 'auto';
+let starAnimId = null;
+
+function applyTheme(theme, accent) {
+  currentTheme  = theme;
+  currentAccent = accent;
+  localStorage.setItem('d2theme',  theme);
+  localStorage.setItem('d2accent', accent);
+
+  const root = document.documentElement;
+  const canvas = document.getElementById('starCanvas');
+
+  // Stop starfield if switching away
+  if (theme !== 'starfield') {
+    if (canvas) canvas.style.opacity = '0';
+    if (starAnimId) { cancelAnimationFrame(starAnimId); starAnimId = null; }
+  }
+
+  // Toggle destiny hex overlay
+  document.body.classList.toggle('theme-destiny', theme === 'destiny');
+
+  // ── Main theme ──
+  if (theme === 'starfield') {
+    root.style.setProperty('--theme-glow', 'rgba(0,0,0,0)');
+    root.style.setProperty('--theme-line', 'rgba(0,0,0,0)');
+    startStarfield();
+  } else if (theme === 'class') {
+    const cls = profileLoaded ? (allItems.find(i=>i.equipped && WEAPON_BUCKETS.has(getEffectiveBucketHash(i))) ? null : null) : null;
+    // Use last char class from profileInfo if available
+    const classType = window._lastCharClass ?? 0;
+    const t = CLASS_THEMES[classType] || CLASS_THEMES[0];
+    root.style.setProperty('--theme-glow', t.glow);
+    root.style.setProperty('--theme-line', t.line);
+  } else if (theme === 'destiny') {
+    root.style.setProperty('--theme-glow', 'rgba(200,168,75,0.10)');
+    root.style.setProperty('--theme-line', 'rgba(200,168,75,0.05)');
+  }
+
+  // ── Accent ──
+  let accentData = null;
+  if (accent === 'auto') {
+    // Find most-used damage type in inventory
+    const counts = {};
+    allItems.filter(i=>WEAPON_BUCKETS.has(getEffectiveBucketHash(i))).forEach(i=>{
+      const dt = getItemDef(i.itemHash)?.defaultDamageType;
+      if (dt && dt > 0) counts[dt] = (counts[dt]||0) + 1;
+    });
+    const topDt = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0];
+    accentData = DAMAGE_ACCENTS[topDt] || null;
+  } else {
+    accentData = DAMAGE_ACCENTS[Number(accent)] || null;
+  }
+
+  if (accentData) {
+    root.style.setProperty('--accent',  accentData.accent);
+    root.style.setProperty('--accent2', accentData.accent2);
+    if (theme !== 'starfield' && theme !== 'destiny') {
+      root.style.setProperty('--theme-glow', accentData.glow);
+      root.style.setProperty('--theme-line', accentData.line);
+    }
+  } else if (accent === 'auto' && !profileLoaded) {
+    // Default accent = gold until profile loads
+    root.style.setProperty('--accent',  '#c8a84b');
+    root.style.setProperty('--accent2', '#e8c96a');
+  }
+
+  updateThemePickerUI();
+}
+
+function startStarfield() {
+  const canvas = document.getElementById('starCanvas');
+  if (!canvas) return;
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.style.opacity = '1';
+  const ctx = canvas.getContext('2d');
+  const stars = Array.from({length: 200}, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    r: Math.random() * 1.4 + 0.2,
+    speed: Math.random() * 0.12 + 0.03,
+    opacity: Math.random() * 0.7 + 0.2,
+    twinkle: Math.random() * Math.PI * 2,
+    twinkleSpeed: Math.random() * 0.02 + 0.005,
+  }));
+
+  function draw() {
+    if (currentTheme !== 'starfield') return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    stars.forEach(s => {
+      s.twinkle += s.twinkleSpeed;
+      s.y += s.speed;
+      if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+      const alpha = s.opacity * (0.6 + 0.4 * Math.sin(s.twinkle));
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.fill();
+    });
+    starAnimId = requestAnimationFrame(draw);
+  }
+  if (starAnimId) cancelAnimationFrame(starAnimId);
+  draw();
+
+  window.addEventListener('resize', () => {
+    if (currentTheme !== 'starfield') return;
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    stars.forEach(s => { s.x = Math.random() * canvas.width; s.y = Math.random() * canvas.height; });
+  });
+}
+
+function updateThemePickerUI() {
+  document.querySelectorAll('.theme-swatch').forEach(el => {
+    const active = el.dataset.theme === currentTheme;
+    el.style.border = active ? `2px solid var(--accent)` : '2px solid transparent';
+    el.style.boxShadow = active ? '0 0 8px var(--accent)' : 'none';
+  });
+  document.querySelectorAll('.accent-swatch').forEach(el => {
+    const active = el.dataset.accent === currentAccent;
+    el.style.border = active ? `2px solid var(--accent)` : '2px solid rgba(255,255,255,0.2)';
+    el.style.boxShadow = active ? '0 0 6px var(--accent)' : 'none';
+    el.style.transform = active ? 'scale(1.15)' : 'scale(1)';
+  });
+
+  // Draw swatch previews
+  const swatchCanvas = document.querySelector('.theme-swatch[data-theme="starfield"] .swatch-canvas');
+  if (swatchCanvas) {
+    const sc = swatchCanvas.getContext('2d');
+    sc.fillStyle = '#0a0c0f';
+    sc.fillRect(0, 0, 58, 44);
+    for (let i = 0; i < 40; i++) {
+      const x = Math.random() * 58, y = Math.random() * 44;
+      const r = Math.random() * 1.2 + 0.2;
+      sc.beginPath();
+      sc.arc(x, y, r, 0, Math.PI*2);
+      sc.fillStyle = `rgba(255,255,255,${Math.random()*0.8+0.2})`;
+      sc.fill();
+    }
+  }
+  // Class swatch preview
+  const classPreview = document.querySelector('.swatch-class-preview');
+  if (classPreview) {
+    const cls = window._lastCharClass ?? 0;
+    const colors = ['#c8a84b','#4a9fd4','#9b6fc4'];
+    classPreview.style.background = `radial-gradient(ellipse at 50% 0%, ${colors[cls]}33 0%, transparent 70%)`;
+    classPreview.style.borderBottom = `2px solid ${colors[cls]}66`;
+  }
+}
+
+function initThemePicker() {
+  document.querySelectorAll('.theme-swatch').forEach(el => {
+    el.addEventListener('click', () => applyTheme(el.dataset.theme, currentAccent));
+  });
+  document.querySelectorAll('.accent-swatch').forEach(el => {
+    el.addEventListener('click', () => applyTheme(currentTheme, el.dataset.accent));
+  });
+  // Draw static swatch previews on init
+  updateThemePickerUI();
+}
+
 // ===================== INIT =====================
 (async function init() {
-  buildDamageIconMap(); // init with fallbacks; real icons loaded after manifest
+  buildDamageIconMap();
   updateOAuthStatus();
+  initThemePicker();
+  applyTheme(currentTheme, currentAccent);
   // Handle OAuth callback redirect - auto-load profile after login
   if (window.location.search.includes('code=')) {
     const ok = await handleOAuthCallback();
