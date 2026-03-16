@@ -2122,8 +2122,8 @@ function setDimDone(iid, val) {
   localStorage.setItem('d2dim', JSON.stringify(d));
 }
 
-const openNameAccordions = {junk:{}, favorites:{}};
-const markTabSort = {junk:{col:'power',dir:-1}, favorites:{col:'power',dir:-1}};
+const openNameAccordions = {junk:{}, fav:{}};
+const markTabSort = {junk:{col:'power',dir:-1}, fav:{col:'power',dir:-1}};
 
 function buildMarkRows(markType) {
   return allItems
