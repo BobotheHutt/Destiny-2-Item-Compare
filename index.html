@@ -354,7 +354,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v47</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v48</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -1211,6 +1211,7 @@ function getFilteredArmor() {
     if (tier===5 && !armorFilter.legendary) return false;
     if (tier<5) return false;
     if (armorFilter.locked && getMark(i.itemInstanceId)!=='fav') return false;
+    if (showNewArmorOnly && !isNewArmor(i)) return false;
     return true;
   });
   if (!armorFilter.dupes) return base;
@@ -1337,6 +1338,7 @@ let armorSort = [{stat:'power', dir:-1},{stat:'none', dir:-1},{stat:'none', dir:
 let showWeaponStats = false;
 // Armor base-only toggle
 let showBaseStats = false;
+let showNewArmorOnly = false;
 // Armor god roll state
 let armorGodRollInstanceIds = [];
 let armorGodRollStats = [
@@ -1650,7 +1652,7 @@ function renderArmorGodRoll() {
   const items = instanceIds.map(id=>{
     const item = allItems.find(i=>i.itemInstanceId===id);
     return {item, inst:instanceData[id], stats:statsData[id]};
-  }).filter(x=>x.item);
+  }).filter(x=>x.item && (!showNewArmorOnly || isNewArmor(x.item)));
   if (!items.length) return;
 
   const def0 = getItemDef(items[0].item.itemHash);
@@ -1705,10 +1707,16 @@ function renderArmorGodRoll() {
   }).join('');
 
   // Base stats toggle
-  const baseToggle = `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
-    <input type="checkbox" id="agrBaseStats" ${showBaseStats?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
-    Base stats only
-  </label>`;
+  const baseToggle = `<div style="display:flex;align-items:center;gap:14px;">
+    <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+      <input type="checkbox" id="agrBaseStats" ${showBaseStats?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
+      Base stats only
+    </label>
+    <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+      <input type="checkbox" id="agrNewOnly" ${showNewArmorOnly?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
+      New armor only
+    </label>
+  </div>`;
 
   // Ranked armor list
   const rankedHtml = scored.map((r, idx) => {
@@ -1800,6 +1808,8 @@ function renderArmorGodRoll() {
   // Base stats toggle
   const baseEl = document.getElementById('agrBaseStats');
   if (baseEl) baseEl.addEventListener('change', () => { showBaseStats = baseEl.checked; renderArmorGodRoll(); });
+  const newOnlyEl = document.getElementById('agrNewOnly');
+  if (newOnlyEl) newOnlyEl.addEventListener('change', () => { showNewArmorOnly = newOnlyEl.checked; renderArmorGodRoll(); });
 
   // Mark buttons
   document.querySelectorAll('#compareContent .mark-row').forEach(row => {
@@ -1853,6 +1863,16 @@ function sortedItems(items, type) {
 
 // Get base armor stat: live stat minus masterwork (+2 per stat) and mod bonuses
 // Mods are socketed plugs that have investmentStats — we subtract each one
+// Detect new armor (3.0) vs old armor (1.0/2.0)
+// New armor has randomized plug sets on its stat sockets
+function isNewArmor(item) {
+  if (!item) return false;
+  const def = getItemDef(item.itemHash);
+  if (!def?.sockets?.socketEntries) return false;
+  // New armor has at least one socket with a randomizedPlugSetHash
+  return def.sockets.socketEntries.some(se => se.randomizedPlugSetHash);
+}
+
 function getModStatBonus(iid, statHash) {
   const socks = socketData[iid];
   if (!socks?.sockets) return 0;
@@ -1878,7 +1898,13 @@ function getBaseStat(item, statHash) {
   const iid = item.itemInstanceId;
   const liveVal = statsData[iid]?.stats?.[statHash]?.value;
   if (liveVal === undefined) return 0;
-  // Subtract masterwork bonus (+2 per stat if masterworked, state bit 2)
+
+  if (!isNewArmor(item)) {
+    // Old armor: stats are fixed, no mods/masterwork to subtract
+    return liveVal;
+  }
+
+  // New armor: subtract masterwork bonus (+2 per stat if masterworked, state bit 2)
   const rawItem = allItems.find(i=>i.itemInstanceId===iid);
   const isMasterworked = rawItem ? !!(rawItem.state & 4) : false;
   const mwBonus = isMasterworked ? 2 : 0;
@@ -1896,7 +1922,7 @@ function renderCompare(instanceIds, type) {
   const items = instanceIds.map(id=>{
     const item = allItems.find(i=>i.itemInstanceId===id);
     return {item, inst:instanceData[id], sockets:socketData[id], stats:statsData[id]};
-  }).filter(x=>x.item);
+  }).filter(x=>x.item && (type!=='armor' || !showNewArmorOnly || isNewArmor(x.item)));
   if (!items.length) return;
 
   const def0  = getItemDef(items[0].item.itemHash);
@@ -1919,10 +1945,16 @@ function renderCompare(instanceIds, type) {
       return `<select class="armor-sort-sel" data-idx="${idx}" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:'Barlow',sans-serif;font-size:12px;padding:4px 8px;outline:none;">${opts}</select>
         <button class="sort-dir-btn" data-idx="${idx}" style="background:var(--surface);border:1px solid var(--border2);color:var(--accent);font-size:11px;padding:4px 8px;cursor:pointer;">${dir===1?'↑':'↓'}</button>`;
     };
-    const baseToggle = `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;margin-left:auto;">
-      <input type="checkbox" id="baseStatsToggle" ${showBaseStats?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
-      Base stats only
-    </label>`;
+    const baseToggle = `<div style="display:flex;align-items:center;gap:14px;margin-left:auto;">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+        <input type="checkbox" id="baseStatsToggle" ${showBaseStats?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
+        Base stats only
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+        <input type="checkbox" id="newArmorToggle" ${showNewArmorOnly?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
+        New armor only
+      </label>
+    </div>`;
     controlsHtml = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:1rem;padding:10px 12px;background:var(--surface);border:1px solid var(--border2);">
       <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Sort 1</span>${makeSelect(0)}
       <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-left:6px;">Sort 2</span>${makeSelect(1)}
@@ -2172,6 +2204,11 @@ function renderCompare(instanceIds, type) {
   const baseToggleEl = document.getElementById('baseStatsToggle');
   if (baseToggleEl) baseToggleEl.addEventListener('change', ()=>{
     showBaseStats = baseToggleEl.checked;
+    renderCompare(instanceIds, type);
+  });
+  const newArmorToggleEl = document.getElementById('newArmorToggle');
+  if (newArmorToggleEl) newArmorToggleEl.addEventListener('change', ()=>{
+    showNewArmorOnly = newArmorToggleEl.checked;
     renderCompare(instanceIds, type);
   });
 
