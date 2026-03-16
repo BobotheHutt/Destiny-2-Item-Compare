@@ -354,7 +354,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v49</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v50</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -1875,14 +1875,18 @@ function isNewArmor(item) {
 function getModStatBonus(iid, statHash) {
   const socks = socketData[iid];
   if (!socks?.sockets) return 0;
+  const item = allItems.find(i=>i.itemInstanceId===iid);
+  const def = item ? getItemDef(item.itemHash) : null;
   let bonus = 0;
-  socks.sockets.forEach(s => {
+  socks.sockets.forEach((s, sockIdx) => {
     if (!s.plugHash) return;
     const plugDef = getItemDef(s.plugHash);
     if (!plugDef) return;
     const ident = plugDef.plug?.plugCategoryIdentifier || '';
-    // Only count armor mods (not perks, shaders, ornaments etc.)
-    if (!ident.includes('armor') && !ident.includes('mods')) return;
+    // Only count actual mod enhancement sockets — these have specific v2 identifiers
+    // Intrinsic stat rolls use different identifiers and should NOT be counted
+    const isMod = ident.match(/^enhancements\.v2_(general|head|arms|chest|legs|class_item)$/);
+    if (!isMod) return;
     if (plugDef.investmentStats) {
       plugDef.investmentStats.forEach(is => {
         if ((is.statTypeHash === statHash || is.statTypeHash === Number(statHash)) && is.value > 0) bonus += is.value;
