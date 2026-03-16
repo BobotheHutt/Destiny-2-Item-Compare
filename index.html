@@ -354,7 +354,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v45</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v47</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -1766,7 +1766,7 @@ function renderArmorGodRoll() {
   }).join('');
 
   document.getElementById('compareContent').innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;padding-right:40px;">
       <div class="compare-title" style="margin-bottom:0;">${slotName} — ${items.length} pieces</div>
       ${baseToggle}
     </div>
@@ -1851,13 +1851,40 @@ function sortedItems(items, type) {
   });
 }
 
-// Get base armor stat from item definition investmentStats (no masterwork/mods)
+// Get base armor stat: live stat minus masterwork (+2 per stat) and mod bonuses
+// Mods are socketed plugs that have investmentStats — we subtract each one
+function getModStatBonus(iid, statHash) {
+  const socks = socketData[iid];
+  if (!socks?.sockets) return 0;
+  let bonus = 0;
+  socks.sockets.forEach(s => {
+    if (!s.plugHash) return;
+    const plugDef = getItemDef(s.plugHash);
+    if (!plugDef) return;
+    const ident = plugDef.plug?.plugCategoryIdentifier || '';
+    // Only count armor mods (not perks, shaders, ornaments etc.)
+    if (!ident.includes('armor') && !ident.includes('mods')) return;
+    if (plugDef.investmentStats) {
+      plugDef.investmentStats.forEach(s => {
+        if (s.statTypeHash === statHash && s.value > 0) bonus += s.value;
+      });
+    }
+  });
+  return bonus;
+}
+
 function getBaseStat(item, statHash) {
   if (!item) return 0;
-  const def = getItemDef(item.itemHash);
-  if (!def?.investmentStats) return 0;
-  const entry = def.investmentStats.find(s=>s.statTypeHash===statHash);
-  return entry?.value||0;
+  const iid = item.itemInstanceId;
+  const liveVal = statsData[iid]?.stats?.[statHash]?.value;
+  if (liveVal === undefined) return 0;
+  // Subtract masterwork bonus (+2 per stat if masterworked, state bit 2)
+  const rawItem = allItems.find(i=>i.itemInstanceId===iid);
+  const isMasterworked = rawItem ? !!(rawItem.state & 4) : false;
+  const mwBonus = isMasterworked ? 2 : 0;
+  // Subtract mod bonuses
+  const modBonus = getModStatBonus(iid, statHash);
+  return Math.max(0, liveVal - mwBonus - modBonus);
 }
 
 function getBaseStatTotal(item) {
