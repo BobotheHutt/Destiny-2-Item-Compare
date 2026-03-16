@@ -354,37 +354,42 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v41</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v42</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
 
-<!-- Theme Picker Panel -->
-<div id="themePicker" style="position:fixed;bottom:40px;right:14px;z-index:1000;background:var(--surface);border:1px solid var(--border2);padding:12px 14px;width:200px;font-family:'Barlow Condensed',sans-serif;">
-  <div style="font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Theme</div>
-  <div style="display:flex;gap:6px;margin-bottom:12px;">
-    <div class="theme-swatch" data-theme="starfield" title="Starfield" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
-      <canvas class="swatch-canvas" width="58" height="44" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
-      <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.7);">Stars</span>
+<!-- Theme Toggle Button + Panel (bottom-left) -->
+<div style="position:fixed;bottom:10px;left:14px;z-index:1000;font-family:'Barlow Condensed',sans-serif;">
+  <button id="themeToggleBtn" onclick="toggleThemePanel()" style="display:flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border2);color:var(--text-muted);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">
+    <span>Theme</span><span id="themeArrow" style="font-size:8px;transition:transform 0.2s;">▲</span>
+  </button>
+  <div id="themePicker" style="display:none;background:var(--surface);border:1px solid var(--border2);border-bottom:none;padding:12px 14px;width:220px;margin-bottom:0;">
+    <div style="font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Main Theme</div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;">
+      <div class="theme-swatch" data-theme="starfield" title="Starfield" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
+        <canvas class="swatch-canvas" width="58" height="44" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+        <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.7);">Stars</span>
+      </div>
+      <div class="theme-swatch" data-theme="class" title="Class" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
+        <div class="swatch-class-preview" style="position:absolute;inset:0;"></div>
+        <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.7);">Class</span>
+      </div>
+      <div class="theme-swatch" data-theme="destiny" title="Destiny UI" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
+        <svg style="position:absolute;inset:0;width:100%;height:100%;" viewBox="0 0 58 44"><polygon points="29,4 52,17 52,39 29,44 6,39 6,17" fill="none" stroke="rgba(200,168,75,0.4)" stroke-width="1"/><line x1="0" y1="0" x2="29" y2="22" stroke="rgba(200,168,75,0.15)" stroke-width="8"/></svg>
+        <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.7);">Destiny</span>
+      </div>
     </div>
-    <div class="theme-swatch" data-theme="class" title="Class" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
-      <div class="swatch-class-preview" style="position:absolute;inset:0;"></div>
-      <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.7);">Class</span>
+    <div style="font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Accent</div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;">
+      <div class="accent-swatch" data-accent="auto" title="Auto (most used)" style="width:26px;height:26px;cursor:pointer;border:2px solid transparent;background:linear-gradient(135deg,#888 0%,#4a9fd4 33%,#c8a84b 66%,#9b6fc4 100%);"></div>
+      <div class="accent-swatch" data-accent="1" title="Kinetic" style="width:26px;height:26px;cursor:pointer;border:2px solid transparent;background:#c0c0c8;"></div>
+      <div class="accent-swatch" data-accent="2" title="Arc" style="width:26px;height:26px;cursor:pointer;border:2px solid transparent;background:#79c2f4;"></div>
+      <div class="accent-swatch" data-accent="3" title="Solar" style="width:26px;height:26px;cursor:pointer;border:2px solid transparent;background:#f07833;"></div>
+      <div class="accent-swatch" data-accent="4" title="Void" style="width:26px;height:26px;cursor:pointer;border:2px solid transparent;background:#7857a8;"></div>
+      <div class="accent-swatch" data-accent="6" title="Stasis" style="width:26px;height:26px;cursor:pointer;border:2px solid transparent;background:#4d97c4;"></div>
+      <div class="accent-swatch" data-accent="7" title="Strand" style="width:26px;height:26px;cursor:pointer;border:2px solid transparent;background:#4fce96;"></div>
     </div>
-    <div class="theme-swatch" data-theme="destiny" title="Destiny UI" style="flex:1;height:44px;cursor:pointer;border:2px solid transparent;position:relative;overflow:hidden;background:#0a0c0f;">
-      <svg style="position:absolute;inset:0;width:100%;height:100%;" viewBox="0 0 58 44"><polygon points="29,4 52,17 52,39 29,44 6,39 6,17" fill="none" stroke="rgba(200,168,75,0.4)" stroke-width="1"/><line x1="0" y1="0" x2="29" y2="22" stroke="rgba(200,168,75,0.15)" stroke-width="8"/></svg>
-      <span style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.7);">Destiny</span>
-    </div>
-  </div>
-  <div style="font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Accent</div>
-  <div style="display:flex;gap:4px;flex-wrap:wrap;">
-    <div class="accent-swatch" data-accent="auto" title="Auto (most used)" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:linear-gradient(135deg,#888 0%,#4a9fd4 33%,#c8a84b 66%,#9b6fc4 100%);position:relative;" title="Auto"></div>
-    <div class="accent-swatch" data-accent="1" title="Kinetic" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#c0c0c8;"></div>
-    <div class="accent-swatch" data-accent="2" title="Arc" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#79c2f4;"></div>
-    <div class="accent-swatch" data-accent="3" title="Solar" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#f07833;"></div>
-    <div class="accent-swatch" data-accent="4" title="Void" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#7857a8;"></div>
-    <div class="accent-swatch" data-accent="6" title="Stasis" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#4d97c4;"></div>
-    <div class="accent-swatch" data-accent="7" title="Strand" style="width:28px;height:28px;cursor:pointer;border:2px solid transparent;background:#4fce96;"></div>
   </div>
 </div>
 
@@ -2624,6 +2629,15 @@ function updateThemePickerUI() {
     classPreview.style.background = `radial-gradient(ellipse at 50% 0%, ${colors[cls]}33 0%, transparent 70%)`;
     classPreview.style.borderBottom = `2px solid ${colors[cls]}66`;
   }
+}
+
+function toggleThemePanel() {
+  const panel = document.getElementById('themePicker');
+  const arrow = document.getElementById('themeArrow');
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  arrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+  if (!isOpen) updateThemePickerUI();
 }
 
 function initThemePicker() {
