@@ -354,7 +354,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v44</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v45</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -2523,21 +2523,11 @@ function applyTheme(theme, accent) {
     const t = CLASS_THEMES[classType] || CLASS_THEMES[0];
     root.style.setProperty('--theme-glow', t.glow);
     root.style.setProperty('--theme-line', t.line);
-    // Class theme also drives accent unless user has explicitly picked a damage accent
-    if (accent === 'auto') {
-      root.style.setProperty('--accent',  t.accent);
-      root.style.setProperty('--accent2', t.accent2);
-    }
   } else if (theme === 'class') {
-    // legacy fallback — use last played class
     const classType = window._lastCharClass ?? 0;
     const t = CLASS_THEMES[classType] || CLASS_THEMES[0];
     root.style.setProperty('--theme-glow', t.glow);
     root.style.setProperty('--theme-line', t.line);
-    if (accent === 'auto') {
-      root.style.setProperty('--accent',  t.accent);
-      root.style.setProperty('--accent2', t.accent2);
-    }
   } else if (theme === 'destiny') {
     root.style.setProperty('--theme-glow', 'rgba(200,168,75,0.10)');
     root.style.setProperty('--theme-line', 'rgba(200,168,75,0.05)');
@@ -2546,7 +2536,7 @@ function applyTheme(theme, accent) {
   // ── Accent ──
   let accentData = null;
   const isClassTheme = theme.startsWith('class-') || theme === 'class';
-  if (accent === 'auto' && !isClassTheme) {
+  if (accent === 'auto') {
     // Find most-used damage type in inventory
     const counts = {};
     allItems.filter(i=>WEAPON_BUCKETS.has(getEffectiveBucketHash(i))).forEach(i=>{
@@ -2555,19 +2545,15 @@ function applyTheme(theme, accent) {
     });
     const topDt = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0];
     accentData = DAMAGE_ACCENTS[topDt] || null;
-  } else if (accent !== 'auto') {
+  } else {
     accentData = DAMAGE_ACCENTS[Number(accent)] || null;
   }
 
   if (accentData) {
+    // Accent only controls UI colors (--accent, --accent2), never the background theme
     root.style.setProperty('--accent',  accentData.accent);
     root.style.setProperty('--accent2', accentData.accent2);
-    if (theme !== 'starfield' && theme !== 'destiny' && !isClassTheme) {
-      root.style.setProperty('--theme-glow', accentData.glow);
-      root.style.setProperty('--theme-line', accentData.line);
-    }
-  } else if (accent === 'auto' && !profileLoaded && !isClassTheme) {
-    // Default accent = gold until profile loads
+  } else if (accent === 'auto' && !profileLoaded) {
     root.style.setProperty('--accent',  '#c8a84b');
     root.style.setProperty('--accent2', '#e8c96a');
   }
