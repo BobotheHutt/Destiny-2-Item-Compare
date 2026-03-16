@@ -2189,7 +2189,7 @@ function renderMarkTab(markType) {
   const orderedKeys = slotOrder.filter(k=>slotMap[k])
     .concat(Object.keys(slotMap).filter(k=>!slotOrder.includes(k)));
 
-  const sort = markTabSort[markType];
+  const sort = markTabSort[markType] || {col:'power', dir:-1};
 
   function sortRows(arr) {
     return [...arr].sort((a,b)=>{
@@ -2252,7 +2252,7 @@ function renderMarkTab(markType) {
     const nameAccs = Object.entries(slot.names).map(([name, nameRows])=>{
       const def = getItemDef(nameRows[0].item.itemHash);
       const icon = def?.displayProperties?.hasIcon?def.displayProperties.icon:null;
-      const isOpen = openNameAccordions[markType][key+':'+name];
+      const isOpen = (openNameAccordions[markType] || (openNameAccordions[markType]={}))[key+':'+name];
       const sorted = sortRows(nameRows);
       const doneCount = nameRows.filter(r=>getDimDone(r.iid)).length;
       const rk = nameRows[0].rk;
@@ -2305,6 +2305,7 @@ function renderMarkTab(markType) {
     hdr.addEventListener('click', ()=>{
       const rawKey = decodeURIComponent(hdr.dataset.rawkey);
       const tab = hdr.dataset.tab;
+      if (!openNameAccordions[tab]) openNameAccordions[tab] = {};
       openNameAccordions[tab][rawKey] = !openNameAccordions[tab][rawKey];
       renderMarkTab(tab);
     });
