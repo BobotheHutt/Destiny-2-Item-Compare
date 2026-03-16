@@ -15,8 +15,8 @@
   --border: rgba(255,255,255,0.07);
   --border2: rgba(255,255,255,0.13);
   --text: #e8e9ea;
-  --text-muted: #7a8090;
-  --text-dim: #454a55;
+  --text-muted: #9aa0b0;
+  --text-dim: #6b7280;
   --accent: #c8a84b;
   --accent2: #e8c96a;
   --titan: #c8a84b;
@@ -95,7 +95,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 .char-card.warlock .char-class { color:var(--warlock); }
 .char-race { font-size:11px; color:var(--text-muted); margin-bottom:10px; }
 .char-power { font-family:'Barlow Condensed',sans-serif; font-size:32px; font-weight:700; color:var(--text); line-height:1; }
-.char-power-label { font-size:9px; color:var(--text-dim); letter-spacing:0.08em; text-transform:uppercase; margin-top:2px; margin-bottom:8px; }
+.char-power-label { font-size:9px; color:var(--text-muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:2px; margin-bottom:8px; }
 .char-time { font-size:11px; color:var(--text-dim); }
 .recent-badge { display:inline-block; font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; background:rgba(200,168,75,0.12); color:var(--accent); padding:2px 6px; margin-bottom:6px; }
 
@@ -292,19 +292,9 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
     <h1>Guardian <span>Lookup</span></h1>
   </div>
 
-  <div class="form-row">
-    <div class="field">
-      <label>Bungie API Key</label>
-      <input type="password" id="apiKey" placeholder="Paste your API key" value="65dad06c7ac04b90ba4096ecf0c9f6f5" />
-      <div class="hint">Get free key at <a href="https://www.bungie.net/en/Application" target="_blank">bungie.net/en/Application</a></div>
-    </div>
-    <div class="field">
-      <label>Bungie ID</label>
-      <input type="text" id="bungieId" placeholder="e.g. Wood#5589" value="Wood#5589" />
-    </div>
-    <button class="primary" id="searchBtn" onclick="searchPlayer()">Search</button>
+  <div class="form-row" id="loginRow">
+    <div id="oauthStatus"></div>
   </div>
-  <div id="oauthStatus" style="margin-bottom:.75rem;font-size:12px;"></div>
 
   <div id="error" class="error"></div>
   <div id="loading" class="loading">
@@ -328,7 +318,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v30</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v31</div>
 
 <!-- Compare overlay -->
 <div id="compareOverlay" class="compare-overlay">
@@ -340,7 +330,8 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 
 <script>
 // ===================== CONSTANTS =====================
-const BUNGIE_CLIENT_ID = '51779';
+const BUNGIE_CLIENT_ID  = '51779';
+const BUNGIE_API_KEY    = '65dad06c7ac04b90ba4096ecf0c9f6f5';
 const BUNGIE_REDIRECT_URL = 'https://bobothehutt.github.io/Destiny-2-Item-Compare';
 const BUNGIE_AUTH_URL = 'https://www.bungie.net/en/OAuth/Authorize';
 const BUNGIE_TOKEN_URL = 'https://www.bungie.net/Platform/App/OAuth/Token/';
@@ -378,8 +369,8 @@ let oauthToken    = localStorage.getItem('d2oauth_token') || null;
 let oauthExpiry   = Number(localStorage.getItem('d2oauth_expiry') || 0);
 let profileInfo   = {};
 
-let weaponFilter  = {exotic:true, legendary:true};
-let armorFilter   = {exotic:true, legendary:true};
+let weaponFilter  = {exotic:false, legendary:true};
+let armorFilter   = {exotic:false, legendary:true};
 let activeWeaponCategory = null;
 let activeWeaponType     = null;
 let activeWeaponBHash    = null;
@@ -398,6 +389,36 @@ function getItemDef(hash) { return manifestItems[hash] || manifestItems[hash>>>0
 function getStatDef(hash) { return manifestStats[hash] || manifestStats[hash>>>0] || null; }
 function getPerkDef(hash) { return manifestPerks[hash] || manifestPerks[hash>>>0] || null; }
 
+const DAMAGE_TYPE_ICONS = {
+  1: '/img/destiny_content/damage_types/destiny2/kinetic.png',        // Kinetic
+  2: '/img/destiny_content/damage_types/destiny2/arc.png',            // Arc
+  3: '/img/destiny_content/damage_types/destiny2/thermal.png',        // Solar
+  4: '/img/destiny_content/damage_types/destiny2/void.png',           // Void
+  6: '/img/destiny_content/damage_types/destiny2/stasis.png',         // Stasis
+  7: '/img/destiny_content/damage_types/destiny2/strand.png',         // Strand
+};
+const AMMO_TYPE_ICONS = {
+  1: '/img/destiny_content/damage_types/destiny2/kinetic_ammo.png',   // Primary
+  2: '/img/destiny_content/damage_types/destiny2/special_ammo.png',   // Special
+  3: '/img/destiny_content/damage_types/destiny2/heavy_ammo.png',     // Heavy
+};
+const CLASS_ICONS = {
+  0: '/img/destiny_content/seasons/icons/s13_titan_icon.png',
+  1: '/img/destiny_content/seasons/icons/s13_hunter_icon.png',
+  2: '/img/destiny_content/seasons/icons/s13_warlock_icon.png',
+};
+function damageIcon(def) {
+  const dt = def?.defaultDamageType;
+  const path = DAMAGE_TYPE_ICONS[dt];
+  if (!path) return '';
+  return `<img src="https://www.bungie.net${path}" style="width:14px;height:14px;vertical-align:middle;opacity:0.85;" />`;
+}
+function ammoIcon(def) {
+  const at = def?.equippingBlock?.ammoType;
+  const path = AMMO_TYPE_ICONS[at];
+  if (!path) return '';
+  return `<img src="https://www.bungie.net${path}" style="width:14px;height:14px;vertical-align:middle;opacity:0.85;" />`;
+}
 function itemRarity(def) { return def?.inventory?.tierType || 0; }
 function rarityKey(def)  { return RARITY[itemRarity(def)] || 'common'; }
 
@@ -415,15 +436,11 @@ function switchMain(tab) {
   document.querySelectorAll('.main-tab').forEach((t,i)=>t.classList.toggle('active',['characters','weapons','armor','favorites','junk'][i]===tab));
   document.querySelectorAll('.main-panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+tab));
   if (tab==='junk') renderMarkTab('junk');
-  if (tab==='favorites') renderMarkTab('favorites');
+  if (tab==='favorites') renderMarkTab('fav');
 }
 
 // ===================== OAUTH =====================
 function oauthLogin() {
-  // Store current API key and bungie ID so we restore them after redirect
-  localStorage.setItem('d2_pre_oauth_key', document.getElementById('apiKey').value);
-  localStorage.setItem('d2_pre_oauth_id', document.getElementById('bungieId').value);
-  // Generate random state for CSRF protection
   const state = Math.random().toString(36).substring(2);
   localStorage.setItem('d2oauth_state', state);
   const url = `${BUNGIE_AUTH_URL}?client_id=${BUNGIE_CLIENT_ID}&response_type=code&state=${state}`;
@@ -439,16 +456,13 @@ async function handleOAuthCallback() {
   const savedState = localStorage.getItem('d2oauth_state');
   if (state !== savedState) { showError('OAuth state mismatch — please try again.'); return false; }
 
-  const apiKey = localStorage.getItem('d2_pre_oauth_key') || document.getElementById('apiKey').value;
+  const apiKey = BUNGIE_API_KEY;
   setLoading('Completing login…');
 
   try {
     const resp = await fetch(BUNGIE_TOKEN_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-API-Key': apiKey
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-API-Key': apiKey },
       body: `grant_type=authorization_code&code=${code}&client_id=${BUNGIE_CLIENT_ID}&redirect_uri=${encodeURIComponent(BUNGIE_REDIRECT_URL)}`
     });
     const data = await resp.json();
@@ -461,12 +475,6 @@ async function handleOAuthCallback() {
         localStorage.setItem('d2oauth_refresh', data.refresh_token);
         localStorage.setItem('d2oauth_refresh_expiry', String(Date.now() + (data.refresh_expires_in * 1000)));
       }
-      // Restore pre-oauth values
-      const savedKey = localStorage.getItem('d2_pre_oauth_key');
-      const savedId  = localStorage.getItem('d2_pre_oauth_id');
-      if (savedKey) document.getElementById('apiKey').value = savedKey;
-      if (savedId)  document.getElementById('bungieId').value = savedId;
-      // Clean URL
       window.history.replaceState({}, document.title, window.location.pathname);
       hideLoading();
       updateOAuthStatus();
@@ -481,14 +489,14 @@ async function handleOAuthCallback() {
   }
 }
 
-async function refreshOAuthToken(apiKey) {
+async function refreshOAuthToken() {
   const refreshToken  = localStorage.getItem('d2oauth_refresh');
   const refreshExpiry = Number(localStorage.getItem('d2oauth_refresh_expiry') || 0);
   if (!refreshToken || Date.now() > refreshExpiry) return false;
   try {
     const resp = await fetch(BUNGIE_TOKEN_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-API-Key': apiKey },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-API-Key': BUNGIE_API_KEY },
       body: `grant_type=refresh_token&refresh_token=${refreshToken}&client_id=${BUNGIE_CLIENT_ID}`
     });
     const data = await resp.json();
@@ -525,64 +533,42 @@ function updateOAuthStatus() {
   const el = document.getElementById('oauthStatus');
   if (!el) return;
   if (isOAuthValid()) {
-    const mins = Math.round((oauthExpiry - Date.now()) / 60000);
-    el.innerHTML = `<span style="color:var(--fav);">✓ Logged in via Bungie OAuth</span> <span style="color:var(--text-dim);">(token expires in ${mins}m)</span> <button onclick="oauthLogout()" style="background:none;border:1px solid var(--border2);color:var(--text-dim);font-size:11px;padding:2px 8px;cursor:pointer;margin-left:8px;">Log out</button>`;
+    el.innerHTML = `<span style="color:var(--fav);">✓ Logged in via Bungie</span>
+      <button onclick="searchPlayer()" style="background:var(--accent);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:5px 16px;cursor:pointer;margin-left:12px;">Load My Guardian</button>
+      <button onclick="oauthLogout()" style="background:none;border:1px solid var(--border2);color:var(--text-dim);font-size:11px;padding:4px 10px;cursor:pointer;margin-left:8px;">Log out</button>`;
   } else {
-    el.innerHTML = `<span style="color:var(--text-muted);">Not logged in — </span><button onclick="oauthLogin()" style="background:var(--accent);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 12px;cursor:pointer;">Login with Bungie</button> <span style="color:var(--text-dim);font-size:11px;">for exact weapon perk rolls</span>`;
+    el.innerHTML = `<button onclick="oauthLogin()" style="background:var(--accent);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:8px 24px;cursor:pointer;">Login with Bungie</button>
+      <span style="color:var(--text-dim);font-size:12px;margin-left:12px;">Sign in to load your guardian inventory</span>`;
   }
 }
 
 // ===================== FETCH =====================
 async function searchPlayer() {
-  const apiKey = document.getElementById('apiKey').value.trim();
-  const rawId  = document.getElementById('bungieId').value.trim();
+  const apiKey = BUNGIE_API_KEY;
   clearError();
   document.getElementById('app').style.display='none';
-  // Save key and ID for convenience
-  if (apiKey) localStorage.setItem('d2_pre_oauth_key', apiKey);
-  if (rawId)  localStorage.setItem('d2_pre_oauth_id', rawId);
-  if (!apiKey) { showError('Please enter your Bungie API key.'); return; }
-  const parts = rawId.split('#');
-  if (parts.length!==2||!parts[1]) { showError('Format must be Name#Code'); return; }
-  const displayName=parts[0], displayNameCode=parseInt(parts[1]);
-  document.getElementById('searchBtn').disabled=true;
-  const headers={'X-API-Key':apiKey,'Content-Type':'application/json'};
+  if (!isOAuthValid()) { showError('Please log in with Bungie first.'); return; }
+  const headers={'X-API-Key':apiKey,'Content-Type':'application/json','Authorization':`Bearer ${oauthToken}`};
 
   try {
-    setLoading('Finding guardian…');
-    console.log('[D2] Searching from origin:', window.location.origin);
-    console.log('[D2] API Key length:', apiKey.length, 'first4:', apiKey.substring(0,4));
-    const sr = await fetch('https://www.bungie.net/Platform/Destiny2/SearchDestinyPlayerByBungieName/-1/',
-      {method:'POST',headers,body:JSON.stringify({displayName,displayNameCode})});
-    console.log('[D2] Search response status:', sr.status);
-    if (!sr.ok) {
-      let errDetail = '';
-      try { const errJson = await sr.json(); errDetail = JSON.stringify(errJson); } catch(e) {}
-      throw new Error(`API error ${sr.status} — ${errDetail || 'check your API key and Origin setting in Bungie app.'}`);
-    }
-    const sd = await sr.json();
-    if (!sd.Response||!sd.Response.length) throw new Error('Guardian not found.');
-    const {membershipType,membershipId,bungieGlobalDisplayName,bungieGlobalDisplayNameCode} = sd.Response[0];
-    profileInfo = {membershipType,membershipId,name:bungieGlobalDisplayName,code:bungieGlobalDisplayNameCode,platform:PLATFORMS[membershipType]||`Type ${membershipType}`};
+    setLoading('Loading your profile…');
+    // Get current user's membership info from OAuth token
+    const meResp = await fetch('https://www.bungie.net/Platform/User/GetMembershipsForCurrentUser/', {headers});
+    if (!meResp.ok) throw new Error(`Profile lookup error ${meResp.status}`);
+    const meData = await meResp.json();
+    const destinyMemberships = meData.Response?.destinyMemberships||[];
+    if (!destinyMemberships.length) throw new Error('No Destiny memberships found for this account.');
+    // Prefer the primary membership or the first one
+    const primary = meData.Response?.primaryMembershipId;
+    const membership = destinyMemberships.find(m=>m.membershipId===primary) || destinyMemberships[0];
+    const {membershipType,membershipId,bungieGlobalDisplayName,bungieGlobalDisplayNameCode} = membership;
+    profileInfo = {membershipType,membershipId,name:bungieGlobalDisplayName||meData.Response?.bungieNetUser?.displayName||'Guardian',code:bungieGlobalDisplayNameCode||0,platform:PLATFORMS[membershipType]||`Type ${membershipType}`};
 
-    setLoading('Loading profile & inventory…');
-    // Use OAuth token if available for richer data (exact weapon rolls via component 306)
-    let profileHeaders = {'X-API-Key': apiKey};
-    if (isOAuthValid()) {
-      profileHeaders['Authorization'] = `Bearer ${oauthToken}`;
-      console.log('[D2] Using OAuth token for profile fetch');
-    } else {
-      // Try refresh
-      const refreshed = await refreshOAuthToken(apiKey);
-      if (refreshed) {
-        profileHeaders['Authorization'] = `Bearer ${oauthToken}`;
-        console.log('[D2] Using refreshed OAuth token');
-      }
-    }
-    const components = isOAuthValid() ? '100,102,200,201,205,300,304,305,307,308,309,310' : '100,102,200,201,205,300,304,305';
+    setLoading('Loading inventory…');
+    const components = '100,102,200,201,205,300,304,305,307,308,309,310';
     const pr = await fetch(
       `https://www.bungie.net/Platform/Destiny2/${membershipType}/Profile/${membershipId}/?components=${components}`,
-      {headers: profileHeaders});
+      {headers});
     if (!pr.ok) throw new Error(`Profile error ${pr.status}`);
     const pd = await pr.json();
 
@@ -602,7 +588,7 @@ async function searchPlayer() {
     }
 
     hideLoading();
-    document.getElementById('searchBtn').disabled=false;
+
 
     const profile     = pd.Response?.profile?.data;
     const characters  = Object.values(pd.Response?.characters?.data||{});
@@ -615,19 +601,12 @@ async function searchPlayer() {
     // Component 306 (reusablePlugs) gives exact per-item rolled perks when authenticated via OAuth
     const comp306 = pd.Response?.itemComponents?.reusablePlugs?.data || pd.Response?.itemComponents?.plugStates?.data || {};
     const hasComp306 = Object.keys(comp306).length > 0;
-    console.log('[D2] component 306 (per-item rolls):', hasComp306 ? Object.keys(comp306).length + ' items' : 'not available (login with OAuth for exact rolls)');
-    console.log('[D2] itemComponents keys with OAuth:', Object.keys(pd.Response?.itemComponents||{}).join(', '));
-    console.log('[D2] full Response keys:', Object.keys(pd.Response||{}).join(', '));
-    console.log('[D2] components requested:', components);
     // Log raw 306 data for first item if available
     if (hasComp306) {
       const firstKey = Object.keys(comp306)[0];
-      console.log('[D2] sample 306 entry:', firstKey, JSON.stringify(comp306[firstKey]));
     } else {
       // Log raw itemComponents to see what's there
-      console.log('[D2] raw itemComponents:', JSON.stringify(Object.keys(pd.Response?.itemComponents||{})));
       // Check if reusablePlugs exists under different key
-      console.log('[D2] full itemComponents structure:', JSON.stringify(Object.entries(pd.Response?.itemComponents||{}).map(([k,v])=>({key:k, hasData:!!v?.data, dataKeys: Object.keys(v?.data||{}).slice(0,2)}))));
     }
 
     if (hasComp306) {
@@ -656,7 +635,6 @@ async function searchPlayer() {
       collectPlugs(profilePlugs);
       Object.values(charPlugSetsAll).forEach(cd=>collectPlugs(cd?.plugs));
       reusablePlugsData = availablePlugsFlat;
-      console.log('[D2] total available plugs (fallback):', availablePlugsFlat.size);
     }
 
     // Collect all items with location tag
@@ -675,11 +653,6 @@ async function searchPlayer() {
     // Debug
     const weaponItems = allItems.filter(i=>WEAPON_BUCKETS.has(i.bucketHash));
     const armorItems  = allItems.filter(i=>ARMOR_BUCKETS.has(i.bucketHash));
-    console.log('[D2] Total allItems:', allItems.length);
-    console.log('[D2] Weapon items:', weaponItems.length, 'Armor items:', armorItems.length);
-    console.log('[D2] Sample weapon bucketHashes:', [...new Set(weaponItems.map(i=>i.bucketHash))]);
-    console.log('[D2] instanceData keys:', Object.keys(instanceData).length);
-    console.log('[D2] socketData keys:', Object.keys(socketData).length);
 
     renderCharacters(characters, charEquip, profile);
     renderWeaponsTab();
@@ -688,7 +661,7 @@ async function searchPlayer() {
 
   } catch(err) {
     hideLoading();
-    document.getElementById('searchBtn').disabled=false;
+
     showError(err.message||'Something went wrong.');
   }
 }
@@ -750,10 +723,12 @@ function renderItemRow(item) {
   const inst = item.itemInstanceId?instanceData[item.itemInstanceId]:null;
   const power = inst?.primaryStat?.value||null;
   const iconPath = def?.displayProperties?.hasIcon?def.displayProperties.icon:null;
+  const isWeapon = WEAPON_BUCKETS.has(getEffectiveBucketHash(item));
+  const dmgIcon = isWeapon ? damageIcon(def) : '';
   return `<div class="item-row">
     <div class="rarity-bar rarity-${rk}"></div>
     <div class="item-icon">${iconPath?`<img src="https://www.bungie.net${iconPath}" />`:`<div class="item-icon-ph">?</div>`}</div>
-    <div class="item-info"><div class="item-name">${name}</div><div class="item-type">${typeLabel}</div></div>
+    <div class="item-info"><div class="item-name">${name}</div><div class="item-type">${dmgIcon}${dmgIcon?' ':''}${typeLabel}</div></div>
     ${power?`<div class="item-power">${power}</div>`:''}
   </div>`;
 }
@@ -864,8 +839,6 @@ function selectWeaponType(bHash, type) {
   activeWeaponBHash = bHash;
   const weapons = getFilteredWeapons().filter(w=>getEffectiveBucketHash(w)===bHash);
   const ofType  = weapons.filter(w=>(getItemDef(w.itemHash)?.itemTypeDisplayName||'Unknown')===type);
-  console.log('[D2] selectWeaponType:', type, 'bHash:', bHash, 'weapons in bucket:', weapons.length, 'ofType:', ofType.length);
-  console.log('[D2] sample types in bucket:', [...new Set(weapons.map(w=>getItemDef(w.itemHash)?.itemTypeDisplayName))]);
   const nameMap = {};
   ofType.forEach(w=>{
     const def = getItemDef(w.itemHash);
@@ -885,9 +858,12 @@ function selectWeaponType(bHash, type) {
     }).join('');
     const key = 'wg_'+(keyIdx++);
     gridClickMap[key] = {instanceIds: items.map(i=>i.itemInstanceId), type:'weapon'};
+    const dmgIco = damageIcon(def);
+    const ammoIco = ammoIcon(def);
     return `<div class="grid-item ${hasDupes?'has-dupes':''}" data-gkey="${key}">
       <div class="grid-item-icon">${icon}${markIndicators}
         ${hasDupes?`<div class="dupe-badge">${items.length}</div>`:''}
+        ${dmgIco?`<div style="position:absolute;bottom:2px;right:2px;display:flex;gap:2px;">${dmgIco}${ammoIco}</div>`:''}
       </div>
       <div class="grid-item-name">${name}</div>
     </div>`;
@@ -898,10 +874,8 @@ function selectWeaponType(bHash, type) {
       <div class="item-grid-title">${type} <span style="color:var(--text-dim);font-size:10px;margin-left:4px;">${ofType.length} items · ${Object.keys(nameMap).length} unique</span></div>
       <div class="item-grid">${gridHtml}</div>
     </div>`;
-  console.log('[D2] grid items rendered:', gridEl.querySelectorAll('.grid-item').length);
   gridEl.querySelectorAll('.grid-item').forEach(node=>{
     node.addEventListener('click', ()=>{
-      console.log('[D2] grid item clicked, key:', node.dataset.gkey, gridClickMap[node.dataset.gkey]);
       const entry = gridClickMap[node.dataset.gkey];
       if (entry) {
         if (entry.type==='weapon') openGodRoll(entry.instanceIds);
@@ -1041,26 +1015,29 @@ function selectArmorSlot(classType, slot) {
   armorGridEl.querySelectorAll('.grid-item').forEach(el=>{
     el.addEventListener('click', ()=>{
       const entry = gridClickMap[el.dataset.gkey];
-      openCompare(entry.instanceIds, entry.type);
+      openArmorGodRoll(entry.instanceIds);
     });
   });
   armorGridEl.querySelector('#compareAllArmorBtn')?.addEventListener('click', ()=>{
-    openCompare(allSlotIds, 'armor');
+    openArmorGodRoll(allSlotIds);
   });
 }
 
 // ===================== COMPARE =====================
 
 // Armor compare sort: up to 3 levels
-let armorSort = [
-  {stat:'power', dir:-1},
-  {stat:'none',  dir:-1},
-  {stat:'none',  dir:-1}
-];
+let armorSort = [{stat:'power', dir:-1},{stat:'none', dir:-1},{stat:'none', dir:-1}];
 // Weapon stats toggle (per compare session)
 let showWeaponStats = false;
 // Armor base-only toggle
 let showBaseStats = false;
+// Armor god roll state
+let armorGodRollInstanceIds = [];
+let armorGodRollStats = [
+  {hash: null, weight: 10},
+  {hash: null, weight: 8},
+  {hash: null, weight: 5},
+];
 
 // Plug column label mapping
 const PLUG_COL_ORDER = ['barrels','magazines','perks','traits'];
@@ -1280,7 +1257,7 @@ function renderGodRoll() {
         <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;">${icon}</div>
         <div style="flex:1;min-width:0;">
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--text);">${name}</div>
-          <div style="font-size:11px;color:var(--text-muted);">${def?.itemTypeAndTierDisplayName||''} <span class="loc-badge">${loc}${r.item.equipped?' · Equipped':''}</span></div>
+          <div style="font-size:11px;color:var(--text-muted);">${damageIcon(def)} ${def?.itemTypeAndTierDisplayName||''} <span class="loc-badge">${loc}${r.item.equipped?' · Equipped':''}</span></div>
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:var(--accent);">${power}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
@@ -1345,6 +1322,188 @@ function renderGodRoll() {
         const m = btn.dataset.mark;
         setMark(iid, m==='clear'?null:m, 'weapon', godRollInstanceIds);
         renderGodRoll();
+      });
+    });
+  });
+}
+
+// ===================== ARMOR GOD ROLL RANKER =====================
+function openArmorGodRoll(instanceIds) {
+  armorGodRollInstanceIds = instanceIds;
+  armorGodRollStats = [
+    {hash: null, weight: 10},
+    {hash: null, weight: 8},
+    {hash: null, weight: 5},
+  ];
+  renderArmorGodRoll();
+  document.getElementById('compareOverlay').classList.add('open');
+}
+
+function renderArmorGodRoll() {
+  const instanceIds = armorGodRollInstanceIds;
+  const items = instanceIds.map(id=>{
+    const item = allItems.find(i=>i.itemInstanceId===id);
+    return {item, inst:instanceData[id], stats:statsData[id]};
+  }).filter(x=>x.item);
+  if (!items.length) return;
+
+  const def0 = getItemDef(items[0].item.itemHash);
+  const slotName = ARMOR_BUCKET_NAMES[getEffectiveBucketHash(items[0].item)] || 'Armor';
+
+  // Build stat options
+  const statOptions = ARMOR_STAT_HASHES.map(h=>({hash:h, name:ARMOR_STAT_NAMES[h]}));
+
+  // Score each item
+  function scoreArmor(stats) {
+    let score = 0;
+    armorGodRollStats.forEach(({hash, weight}) => {
+      if (!hash || !weight) return;
+      const val = showBaseStats ? getBaseStat(items.find(x=>x.stats===stats)?.item, hash)
+                                : (stats?.stats?.[hash]?.value || 0);
+      score += val * weight;
+    });
+    return score;
+  }
+
+  // Score + sort
+  const scored = items.map(({item, inst, stats}) => {
+    let score = 0;
+    armorGodRollStats.forEach(({hash, weight}) => {
+      if (!hash || !weight) return;
+      const val = showBaseStats ? getBaseStat(item, hash) : (stats?.stats?.[hash]?.value || 0);
+      score += val * weight;
+    });
+    return {item, inst, stats, score};
+  }).sort((a,b) => b.score - a.score);
+
+  const anyStatSelected = armorGodRollStats.some(s => s.hash);
+
+  // Stat selector row
+  const selectorHtml = armorGodRollStats.map((s, idx) => {
+    const opts = [
+      `<option value="">— Stat ${idx+1} —</option>`,
+      ...statOptions.map(o => `<option value="${o.hash}" ${s.hash===o.hash?'selected':''}>${o.name}</option>`)
+    ].join('');
+    return `<div style="display:flex;flex-direction:column;gap:4px;flex:1;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);">Stat ${idx+1}</div>
+      <select class="agr-stat-sel" data-idx="${idx}"
+        style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:'Barlow',sans-serif;font-size:12px;padding:5px 8px;outline:none;width:100%;">
+        ${opts}
+      </select>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+        <span style="font-size:10px;color:var(--text-dim);">Weight</span>
+        <input type="number" class="agr-weight" data-idx="${idx}" value="${s.weight}" min="0" max="99"
+          style="width:50px;background:var(--surface2);border:1px solid var(--border2);color:var(--accent);font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;text-align:center;padding:3px 4px;outline:none;" />
+      </div>
+    </div>`;
+  }).join('');
+
+  // Base stats toggle
+  const baseToggle = `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+    <input type="checkbox" id="agrBaseStats" ${showBaseStats?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
+    Base stats only
+  </label>`;
+
+  // Ranked armor list
+  const rankedHtml = scored.map((r, idx) => {
+    const def = getItemDef(r.item.itemHash);
+    const name = def?.displayProperties?.name || 'Item';
+    const icon = def?.displayProperties?.hasIcon ? `<img src="https://www.bungie.net${def.displayProperties.icon}" style="width:100%;height:100%;object-fit:cover;display:block;" />` : '';
+    const power = r.inst?.primaryStat?.value || '—';
+    const iid = r.item.itemInstanceId;
+    const mark = getMark(iid);
+    const loc = r.item.loc || '';
+
+    // Stat bars
+    const statRowsHtml = ARMOR_STAT_HASHES.map(h => {
+      const val = showBaseStats ? getBaseStat(r.item, h) : (r.stats?.stats?.[h]?.value || 0);
+      const isSelected = armorGodRollStats.some(s => s.hash === h);
+      // Find best value across all items for this stat
+      const bestVal = Math.max(...scored.map(x => showBaseStats ? getBaseStat(x.item, h) : (x.stats?.stats?.[h]?.value || 0)));
+      const isBest = val === bestVal && val > 0 && scored.length > 1;
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+        <div style="font-size:10px;color:${isSelected?'var(--accent)':isBest?'var(--fav)':'var(--text-muted)'};width:60px;flex-shrink:0;font-weight:${isSelected||isBest?600:400};">${ARMOR_STAT_NAMES[h]}</div>
+        <div style="flex:1;height:4px;background:var(--surface2);border-radius:2px;">
+          <div style="height:4px;width:${Math.min(val,100)}%;background:${isSelected?'var(--accent)':isBest?'var(--fav)':'var(--border2)'};border-radius:2px;"></div>
+        </div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:${isSelected||isBest?700:400};color:${isSelected?'var(--accent)':isBest?'var(--fav)':'var(--text)'};width:24px;text-align:right;">${val||'—'}</div>
+      </div>`;
+    }).join('');
+
+    const totalVal = ARMOR_STAT_HASHES.reduce((sum,h) => sum + (showBaseStats ? getBaseStat(r.item,h) : (r.stats?.stats?.[h]?.value||0)), 0);
+    const scoreDisplay = anyStatSelected ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--accent);">${Math.round(r.score)}</div><div style="font-size:9px;color:var(--text-dim);text-align:right;">score</div>` : '';
+
+    return `<div style="background:var(--surface);border:1px solid ${idx===0&&anyStatSelected?'var(--fav)':'var(--border2)'};padding:12px;margin-bottom:6px;" id="citem-${iid}">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${idx===0&&anyStatSelected?'var(--fav)':'var(--text-dim)'};width:28px;text-align:center;flex-shrink:0;">${idx+1}</div>
+        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;">${icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--text);">${name}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${def?.itemTypeAndTierDisplayName||''} <span class="loc-badge">${loc}${r.item.equipped?' · Equipped':''}</span></div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:var(--accent);">${power}</div>
+            <div style="font-size:11px;color:var(--text-dim);">Total: ${totalVal}</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
+          ${scoreDisplay}
+          <div class="mark-row" data-iid="${iid}" data-type="armor" style="display:flex;gap:3px;">
+            <button class="mark-btn fav ${mark==='fav'?'active':''}" data-mark="fav" style="padding:3px 7px;font-size:10px;">★ Fav</button>
+            <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:3px 7px;font-size:10px;">Junk</button>
+            <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:3px 7px;font-size:10px;">Infuse</button>
+            <button class="mark-btn clear-btn" data-mark="clear" style="padding:3px 7px;font-size:10px;">✕</button>
+          </div>
+        </div>
+      </div>
+      <div>${statRowsHtml}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('compareContent').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div class="compare-title" style="margin-bottom:0;">${slotName} — ${items.length} pieces</div>
+      ${baseToggle}
+    </div>
+    <div style="margin-bottom:14px;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Stat Ranker — pick up to 3 stats and set their weights</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;background:var(--surface);border:1px solid var(--border2);padding:12px;">
+        ${selectorHtml}
+      </div>
+    </div>
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">
+      ${anyStatSelected ? 'Ranked by Weighted Score' : 'All Pieces — select stats above to rank'}
+    </div>
+    ${rankedHtml}`;
+
+  // Wire stat selects
+  document.querySelectorAll('#compareContent .agr-stat-sel').forEach(sel => {
+    sel.addEventListener('change', () => {
+      armorGodRollStats[Number(sel.dataset.idx)].hash = sel.value ? Number(sel.value) : null;
+      renderArmorGodRoll();
+    });
+  });
+
+  // Wire weight inputs
+  document.querySelectorAll('#compareContent .agr-weight').forEach(inp => {
+    inp.addEventListener('change', () => {
+      armorGodRollStats[Number(inp.dataset.idx)].weight = Number(inp.value) || 0;
+      renderArmorGodRoll();
+    });
+  });
+
+  // Base stats toggle
+  const baseEl = document.getElementById('agrBaseStats');
+  if (baseEl) baseEl.addEventListener('change', () => { showBaseStats = baseEl.checked; renderArmorGodRoll(); });
+
+  // Mark buttons
+  document.querySelectorAll('#compareContent .mark-row').forEach(row => {
+    const iid = row.dataset.iid;
+    row.querySelectorAll('.mark-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const m = btn.dataset.mark;
+        saveMark(iid, m==='clear'?null:m);
+        renderArmorGodRoll();
+        if (activeArmorClass!==null && activeArmorSlot) selectArmorSlot(activeArmorClass, activeArmorSlot);
       });
     });
   });
@@ -1463,10 +1622,6 @@ function renderCompare(instanceIds, type) {
       // DEBUG: log first weapon's socket data
       if (sorted.indexOf(sorted.find(x=>x.item.itemInstanceId===iid)) === 0) {
         // Dump raw socket objects for barrel and trait sockets
-        console.log('[D2 RAW] socket[1] full:', JSON.stringify(sockets.sockets[1]));
-        console.log('[D2 RAW] socket[3] full:', JSON.stringify(sockets.sockets[3]));
-        console.log('[D2 SOCKETS] instanceId:', iid);
-        console.log('[D2 SOCKETS] socket count:', sockets.sockets.length);
         const itemDefDbg = getItemDef(item.itemHash);
         sockets.sockets.forEach((s,i)=>{
           const pd = getItemDef(s.plugHash);
@@ -1481,7 +1636,6 @@ function renderCompare(instanceIds, type) {
           const psDbg = randH!=='none'?(manifestPlugSets[randH]||manifestPlugSets[randH>>>0]):null;
           const possible = psDbg?.reusablePlugItems?.length||0;
           const available = psDbg?.reusablePlugItems?.filter(p=>avail instanceof Set ? avail.has(p.plugItemHash)||p.plugItemHash===s.plugHash : false).length||0;
-          console.log(`  socket[${i}] name:${pd?.displayProperties?.name||'?'} randHash:${randH} possible:${possible} available:${available}`);
         });
       }
       const cols = [];
@@ -1643,7 +1797,7 @@ function renderCompare(instanceIds, type) {
         <div class="compare-item-icon">${icon}</div>
         <div style="flex:1;min-width:0;">
           <div class="compare-item-name">${name}</div>
-          <div class="compare-item-meta">${def?.itemTypeAndTierDisplayName||''} <span class="loc-badge">${loc}${item.equipped?' · Equipped':''}</span></div>
+          <div class="compare-item-meta">${damageIcon(def)} ${def?.itemTypeAndTierDisplayName||''} <span class="loc-badge">${loc}${item.equipped?' · Equipped':''}</span></div>
           <div class="compare-item-power">${power}</div>
         </div>
         <div class="mark-row" data-iid="${iid}" data-type="${type}" style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
@@ -1963,27 +2117,16 @@ function renderMarkTab(markType) {
 // ===================== INIT =====================
 (async function init() {
   // Restore saved API key from localStorage
-  const savedKey = localStorage.getItem('d2_pre_oauth_key') || '65dad06c7ac04b90ba4096ecf0c9f6f5';
-  if (savedKey) document.getElementById('apiKey').value = savedKey;
   updateOAuthStatus();
-  // Handle OAuth callback redirect
+  // Handle OAuth callback redirect - auto-load profile after login
   if (window.location.search.includes('code=')) {
-    await handleOAuthCallback();
-    // Auto-search if we have saved credentials
-    const savedKey = localStorage.getItem('d2_pre_oauth_key');
-    const savedId  = localStorage.getItem('d2_pre_oauth_id');
-    if (savedKey && savedId) {
-      document.getElementById('apiKey').value = savedKey;
-      document.getElementById('bungieId').value = savedId;
-      searchPlayer();
-    }
+    const ok = await handleOAuthCallback();
+    if (ok) searchPlayer();
   }
 })();
 
 // ===================== KEYBOARD =====================
 document.addEventListener('keydown', e=>{ if (e.key==='Escape') closeCompare(); });
-document.getElementById('bungieId').addEventListener('keydown',e=>{ if(e.key==='Enter') searchPlayer(); });
-document.getElementById('apiKey').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('bungieId').focus(); });
 document.getElementById('compareOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeCompare(); });
 </script>
 </body>
