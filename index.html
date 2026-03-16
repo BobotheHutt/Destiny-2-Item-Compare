@@ -354,7 +354,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v48</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v49</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -1864,13 +1864,12 @@ function sortedItems(items, type) {
 // Get base armor stat: live stat minus masterwork (+2 per stat) and mod bonuses
 // Mods are socketed plugs that have investmentStats — we subtract each one
 // Detect new armor (3.0) vs old armor (1.0/2.0)
-// New armor has randomized plug sets on its stat sockets
+// New armor has a traitId ending in '.core', old armor ends in '.season'
 function isNewArmor(item) {
   if (!item) return false;
   const def = getItemDef(item.itemHash);
-  if (!def?.sockets?.socketEntries) return false;
-  // New armor has at least one socket with a randomizedPlugSetHash
-  return def.sockets.socketEntries.some(se => se.randomizedPlugSetHash);
+  if (!def?.traitIds) return false;
+  return def.traitIds.some(t => t.startsWith('releases.') && t.endsWith('.core'));
 }
 
 function getModStatBonus(iid, statHash) {
@@ -1885,8 +1884,8 @@ function getModStatBonus(iid, statHash) {
     // Only count armor mods (not perks, shaders, ornaments etc.)
     if (!ident.includes('armor') && !ident.includes('mods')) return;
     if (plugDef.investmentStats) {
-      plugDef.investmentStats.forEach(s => {
-        if (s.statTypeHash === statHash && s.value > 0) bonus += s.value;
+      plugDef.investmentStats.forEach(is => {
+        if ((is.statTypeHash === statHash || is.statTypeHash === Number(statHash)) && is.value > 0) bonus += is.value;
       });
     }
   });
@@ -1896,8 +1895,11 @@ function getModStatBonus(iid, statHash) {
 function getBaseStat(item, statHash) {
   if (!item) return 0;
   const iid = item.itemInstanceId;
-  const liveVal = statsData[iid]?.stats?.[statHash]?.value;
-  if (liveVal === undefined) return 0;
+  const statsObj = statsData[iid]?.stats;
+  if (!statsObj) return 0;
+  // API may return stat keys as strings or numbers — check both
+  const liveVal = statsObj[statHash]?.value ?? statsObj[String(statHash)]?.value;
+  if (liveVal === undefined || liveVal === null) return 0;
 
   if (!isNewArmor(item)) {
     // Old armor: stats are fixed, no mods/masterwork to subtract
