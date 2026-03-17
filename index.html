@@ -368,7 +368,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v64</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v65</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -1160,7 +1160,7 @@ function renderItemRow(item) {
   const isWeapon = WEAPON_BUCKETS.has(getEffectiveBucketHash(item));
   const dmgIcon = isWeapon ? damageIcon(def) : '';
   const mwStyle = item.itemInstanceId && isMasterworked(item.itemInstanceId) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
-  return `<div class="item-row">
+  return `<div class="item-row" onmouseenter="startHoverTimer(event,'${item.itemInstanceId}')" onmouseleave="clearHoverTimer()">
     <div class="rarity-bar rarity-${rk}"></div>
     <div class="item-icon" style="${mwStyle}">${iconPath?`<img src="https://www.bungie.net${iconPath}" />`:`<div class="item-icon-ph">?</div>`}</div>
     <div class="item-info"><div class="item-name">${name}</div><div class="item-type">${dmgIcon}${dmgIcon?' ':''}${typeLabel}</div></div>
@@ -1328,7 +1328,7 @@ function selectWeaponType(bHash, type) {
     const dmgIco = damageIcon(def);
     const ammoIco = ammoIcon(def);
     const mwOutline = items.some(i=>isMasterworked(i.itemInstanceId)) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
-    return `<div class="grid-item ${hasDupes?'has-dupes':''}" data-gkey="${key}">
+    return `<div class="grid-item ${hasDupes?'has-dupes':''}" data-gkey="${key}" onmouseenter="startHoverTimer(event,'${items[0].itemInstanceId}')" onmouseleave="clearHoverTimer()">
       <div class="grid-item-icon" style="${mwOutline}">${icon}${markIndicators}
         ${hasDupes?`<div class="dupe-badge">${items.length}</div>`:''}
         ${dmgIco?`<div style="position:absolute;bottom:2px;right:2px;display:flex;gap:2px;">${dmgIco}${ammoIco}</div>`:''}
@@ -1512,7 +1512,7 @@ function selectArmorSlot(classType, slot) {
     const key = 'ag_'+(aKeyIdx++);
     gridClickMap[key] = {instanceIds: allSlotIds, type:'armor', scrollTo: a.itemInstanceId};
     const aMwOutline = isMasterworked(a.itemInstanceId) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
-    return `<div class="grid-item" data-gkey="${key}">
+    return `<div class="grid-item" data-gkey="${key}" onmouseenter="startHoverTimer(event,'${a.itemInstanceId}')" onmouseleave="clearHoverTimer()">
       <div class="grid-item-icon" style="${aMwOutline}">${icon}${markDot}</div>
       <div class="grid-item-name">${name}</div>
     </div>`;
@@ -2562,7 +2562,7 @@ function renderMarkTab(markType) {
     const armorCells = r.category==='Armor'
       ? ARMOR_STAT_HASHES.map(h=>`<td style="font-family:'Barlow Condensed',sans-serif;font-size:13px;color:${r.armorStats[h]?'var(--text)':'var(--text-dim)'};">${r.armorStats[h]||'&#8212;'}</td>`).join('')
       : '';
-    return `<tr class="${done?'done-in-dim':''}" data-iid="${r.iid}">
+    return `<tr class="${done?'done-in-dim':''}" data-iid="${r.iid}" onmouseenter="startHoverTimer(event,'${r.iid}')" onmouseleave="clearHoverTimer()">
       <td class="dim-check-cell"><input type="checkbox" class="dim-checkbox" ${done?'checked':''} data-iid="${r.iid}" data-tab="${markType}" /></td>
       <td><div class="junk-name-cell">
         <div class="rarity-dot ${r.rk}"></div>
@@ -3184,7 +3184,7 @@ async function transferItem(iid, side, slotBucket) {
 // Hover tooltip
 function startHoverTimer(event, iid) {
   clearHoverTimer();
-  hoverTimer = setTimeout(()=>showItemTooltip(event, iid), 3000);
+  hoverTimer = setTimeout(()=>showItemTooltip(event, iid), 1500);
 }
 function clearHoverTimer() {
   if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer=null; }
@@ -3238,7 +3238,7 @@ function showItemTooltip(event, iid) {
           ${col.hashes.map(h=>{
             const pd=getItemDef(h); const pn=pd?.displayProperties?.name||'';
             const isEq = h===col.equippedHash;
-            return `<div style="font-size:11px;padding:2px 0;color:${isEq?'var(--accent)':'var(--text-muted)'};font-weight:${isEq?600:400};">${isEq?'▸ ':''  }${pn}</div>`;
+            return `<div style="font-size:11px;padding:2px 0;color:${isEq?'var(--text)':'var(--text-muted)'};font-weight:${isEq?700:400};">${pn}</div>`;
           }).join('')}
         </div>`).join('')}
       </div>`;
