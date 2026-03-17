@@ -368,7 +368,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v60</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v61</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3062,7 +3062,7 @@ function renderTrashMode() {
 
     return `<div class="tm-slot-row" style="display:flex;gap:10px;margin-bottom:18px;align-items:flex-start;padding-top:16px;">
       <div class="tm-drop-zone" data-zone="char" data-slot="${slot.bucket}"
-        style="position:relative;background:var(--surface);border:1px solid var(--border2);padding:8px;display:flex;gap:8px;align-items:flex-start;transition:border-color .15s,background .15s;min-width:180px;">
+        style="position:relative;background:var(--surface);border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);padding:8px;display:flex;gap:8px;align-items:flex-start;transition:border-color .15s,background .15s;min-width:180px;">
         <div style="position:absolute;top:-14px;left:4px;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">${slot.name}</div>
         ${equippedHtml}
         ${invGridHtml}
@@ -3071,7 +3071,7 @@ function renderTrashMode() {
 
         <div class="tm-drop-zone" data-zone="junk" data-slot="${slot.bucket}"
           style="position:relative;min-height:60px;background:var(--surface);border:1px solid rgba(224,85,85,0.35);padding:8px;display:flex;flex-wrap:wrap;gap:3px;transition:border-color .15s,background .15s;${slotIdx===0?'':'margin-top:0;'}">
-          <div style="position:absolute;top:-14px;left:4px;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--junk);opacity:0.8;">Trash</div>
+          <div style="position:absolute;top:-14px;left:4px;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);opacity:0.7;">Trash</div>
           ${junkIcons||`<div style="color:var(--text-dim);font-size:11px;padding:4px;align-self:center;">No junk</div>`}
         </div>
       </div>
