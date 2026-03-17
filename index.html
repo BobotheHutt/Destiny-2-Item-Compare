@@ -368,7 +368,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v55</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v57</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -1046,9 +1046,48 @@ async function searchPlayer() {
 }
 
 // ===================== CHARACTERS TAB =====================
+
+// Calculate max possible power for a character (best-in-slot average)
+function calcMaxPower(classType) {
+  const WEAPON_SLOTS = [1498876634, 2465295065, 953998645]; // Kinetic, Energy, Heavy
+  const ARMOR_SLOTS  = [3448274439, 3551918588, 14239492, 20886954, 1585787867]; // Helmet, Gauntlets, Chest, Legs, Class
+
+  let total = 0, count = 0;
+
+  // Weapons: best across ALL items regardless of character
+  WEAPON_SLOTS.forEach(bucket => {
+    let best = 0;
+    allItems.forEach(i => {
+      if (getEffectiveBucketHash(i) !== bucket) return;
+      const def = getItemDef(i.itemHash);
+      if (!def) return;
+      const power = instanceData[i.itemInstanceId]?.primaryStat?.value || 0;
+      if (power > best) best = power;
+    });
+    if (best > 0) { total += best; count++; }
+  });
+
+  // Armor: best for this class (classType matches or classType===3 = class-neutral)
+  ARMOR_SLOTS.forEach(bucket => {
+    let best = 0;
+    allItems.forEach(i => {
+      if (getEffectiveBucketHash(i) !== bucket) return;
+      const def = getItemDef(i.itemHash);
+      if (!def) return;
+      // Check class compatibility: 3 = Any class
+      const itemClass = def.classType;
+      if (itemClass !== classType && itemClass !== 3) return;
+      const power = instanceData[i.itemInstanceId]?.primaryStat?.value || 0;
+      if (power > best) best = power;
+    });
+    if (best > 0) { total += best; count++; }
+  });
+
+  return count === 8 ? Math.floor(total / 8) : Math.floor(total / count) || 0;
+}
+
 function renderCharacters(characters, charEquip, profile) {
   const totalHours = Math.round(characters.reduce((a,c)=>a+(parseInt(c.minutesPlayedTotal)||0),0)/60);
-  const highestPow = characters.length ? Math.max(...characters.map(c=>c.light||0)) : 0;
   // Use last-played character's emblem as avatar
   const lastChar = characters[0]; // already sorted by dateLastPlayed
   const emblemPath = lastChar?.emblemPath;
@@ -1080,7 +1119,7 @@ function renderCharacters(characters, charEquip, profile) {
       <div class="char-class">${CLASS_NAMES[c.classType]||'Unknown'}${i===0?` <span class="recent-badge">Most Recent</span>`:''}</div>
       <div class="char-race">${RACE_NAMES[c.raceType]||''} ${GENDER_NAMES[c.genderType]||''}</div>
       <div class="char-power">${c.light||'—'}</div>
-      <div class="char-power-label">Power Level</div>
+      <div class="char-power-label">Power Level &nbsp;·&nbsp; <span style="color:var(--accent);">Max: ${calcMaxPower(c.classType)||'—'}</span></div>
       <div class="char-time">${hrs.toLocaleString()} hrs · Last played ${formatDate(c.dateLastPlayed)}</div>
       <div class="equipped-section">
         ${eqSection(weapons,'Weapons')}${eqSection(armor,'Armor')}${eqSection(general,'General')}
@@ -1099,7 +1138,7 @@ function renderCharacters(characters, charEquip, profile) {
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-label">Most Played</div><div class="stat-value" style="font-size:15px;">${CLASS_NAMES[characters.reduce((a,b)=>(parseInt(b.minutesPlayedTotal)||0)>(parseInt(a.minutesPlayedTotal)||0)?b:a).classType]||'—'}</div></div>
       <div class="stat-card"><div class="stat-label">Total Hours</div><div class="stat-value">${totalHours.toLocaleString()}</div></div>
-      <div class="stat-card"><div class="stat-label">Highest Power</div><div class="stat-value">${highestPow||'—'}</div></div>
+      <div class="stat-card"><div class="stat-label">Max Power</div><div class="stat-value">${Math.max(...characters.map(c=>calcMaxPower(c.classType)))||'—'}</div></div>
     </div>
     <div class="chars-grid">${charsHtml}</div>`;
 }
@@ -2984,25 +3023,24 @@ function renderTrashMode() {
       </div>`;
     };
 
-    // Left side: all items in a wrapping grid (equipped gets E badge + position first)
+    // Left side: equipped alone, 3x3 inventory grid beside it, all same size
     const equippedItem = charItems.find(i=>i.equipped);
     const invItems = charItems.filter(i=>!i.equipped);
-    const allCharIcons = [
-      ...(equippedItem ? [equippedItem] : []),
-      ...invItems
-    ].map(i=>renderIcon(i,'char'));
-    const equippedHtml = '';
+    const equippedHtml = equippedItem
+      ? renderIcon(equippedItem,'char')
+      : `<div style="width:48px;height:48px;background:var(--surface2);border:1px dashed var(--border2);opacity:0.4;flex-shrink:0;"></div>`;
     const invGridHtml = `<div style="display:grid;grid-template-columns:repeat(3,48px);gap:3px;">${
-      Array.from({length:10}).map((_,idx)=> allCharIcons[idx] || `<div style="width:48px;height:48px;background:var(--surface2);border:1px dashed var(--border);opacity:0.2;"></div>`).join('')
+      Array.from({length:9}).map((_,idx)=> invItems[idx] ? renderIcon(invItems[idx],'char') : `<div style="width:48px;height:48px;background:var(--surface2);border:1px dashed var(--border);opacity:0.2;"></div>`).join('')
     }</div>`;
 
     // Right side: junk items grid
-    const junkIcons = junkItems.map(i=>renderIcon(i,'junk',44)).join('');
+    const junkIcons = junkItems.map(i=>renderIcon(i,'junk')).join('');
 
     return `<div class="tm-slot-row" style="display:flex;gap:10px;margin-bottom:18px;align-items:flex-start;padding-top:16px;">
       <div class="tm-drop-zone" data-zone="char" data-slot="${slot.bucket}"
         style="position:relative;background:var(--surface);border:1px solid var(--border2);padding:8px;display:flex;gap:8px;align-items:flex-start;transition:border-color .15s,background .15s;min-width:180px;">
         <div style="position:absolute;top:-14px;left:4px;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">${slot.name}</div>
+        ${equippedHtml}
         ${invGridHtml}
       </div>
       <div style="flex:1;display:flex;flex-direction:column;gap:0;">
