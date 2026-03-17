@@ -368,7 +368,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v65</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v66</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -2515,6 +2515,7 @@ function buildMarkRows(markType) {
 }
 
 function renderMarkTab(markType) {
+  clearHoverTimer(); // clear any stale tooltip when re-rendering
   const panelId = markType==='junk'?'panel-junk':'panel-favorites';
   const panel   = document.getElementById(panelId);
   const emptyLabel = markType==='junk'?'No items marked as junk yet.':'No items marked as locked yet.';
@@ -2960,6 +2961,7 @@ const SLOT_ORDER = [
 ];
 
 function renderTrashMode() {
+  clearHoverTimer(); // clear any stale tooltip when re-rendering
   const panel = document.getElementById('panel-trashmode');
   if (!panel) return;
 
@@ -3332,7 +3334,8 @@ function showItemTooltip(event, iid) {
 })();
 
 // ===================== KEYBOARD =====================
-document.addEventListener('keydown', e=>{ if (e.key==='Escape') closeCompare(); });
+document.addEventListener('keydown', e=>{ if (e.key==='Escape') { closeCompare(); clearHoverTimer(); } });
+document.addEventListener('click', ()=>{ clearHoverTimer(); });
 document.getElementById('previewId')?.addEventListener('keydown', e=>{ if(e.key==='Enter') previewPlayer(); });
 document.getElementById('compareOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeCompare(); });
 </script>
