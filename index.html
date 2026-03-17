@@ -368,7 +368,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v59</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v60</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -411,6 +411,11 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
       <div class="accent-swatch" data-accent="4" title="Void" style="width:26px;height:26px;cursor:pointer;border:2px solid transparent;background:#7857a8;"></div>
       <div class="accent-swatch" data-accent="6" title="Stasis" style="width:26px;height:26px;cursor:pointer;border:2px solid transparent;background:#4d97c4;"></div>
       <div class="accent-swatch" data-accent="7" title="Strand" style="width:26px;height:26px;cursor:pointer;border:2px solid transparent;background:#4fce96;"></div>
+    </div>
+    <div style="margin-top:12px;">
+      <div style="font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">Brightness</div>
+      <input type="range" id="themeBrightness" min="1" max="10" value="5"
+        style="width:100%;accent-color:var(--accent);cursor:pointer;" />
     </div>
   </div>
 </div>
@@ -2762,11 +2767,15 @@ const DAMAGE_ACCENTS = {
   7: { accent:'#4fce96', accent2:'#80e8b8', glow:'rgba(79,206,150,0.14)',  line:'rgba(79,206,150,0.06)',  name:'Strand' },
 };
 
-let currentTheme  = localStorage.getItem('d2theme')  || 'destiny';
-let currentAccent = localStorage.getItem('d2accent') || 'auto';
+let currentTheme      = localStorage.getItem('d2theme')      || 'destiny';
+let currentAccent     = localStorage.getItem('d2accent')     || 'auto';
+let currentBrightness = Number(localStorage.getItem('d2brightness') || 5);
 let starAnimId = null;
 
-function applyTheme(theme, accent) {
+function applyTheme(theme, accent, brightness) {
+  if (brightness !== undefined) currentBrightness = brightness;
+  const bMult = currentBrightness / 5; // 1.0 at default, 0.2 at min, 2.0 at max
+  localStorage.setItem('d2brightness', currentBrightness);
   currentTheme  = theme;
   currentAccent = accent;
   localStorage.setItem('d2theme',  theme);
@@ -2792,16 +2801,16 @@ function applyTheme(theme, accent) {
   } else if (theme.startsWith('class-')) {
     const classType = Number(theme.split('-')[1]);
     const t = CLASS_THEMES[classType] || CLASS_THEMES[0];
-    root.style.setProperty('--theme-glow', t.glow);
-    root.style.setProperty('--theme-line', t.line);
+    root.style.setProperty('--theme-glow', `rgba(${t.glow.match(/\d+,\d+,\d+/)[0]},${parseFloat(t.glow.match(/[\d.]+\)$/)[0])*bMult})`);
+    root.style.setProperty('--theme-line', `rgba(${t.line.match(/\d+,\d+,\d+/)[0]},${parseFloat(t.line.match(/[\d.]+\)$/)[0])*bMult})`);
   } else if (theme === 'class') {
     const classType = window._lastCharClass ?? 0;
     const t = CLASS_THEMES[classType] || CLASS_THEMES[0];
-    root.style.setProperty('--theme-glow', t.glow);
-    root.style.setProperty('--theme-line', t.line);
+    root.style.setProperty('--theme-glow', `rgba(${t.glow.match(/\d+,\d+,\d+/)[0]},${parseFloat(t.glow.match(/[\d.]+\)$/)[0])*bMult})`);
+    root.style.setProperty('--theme-line', `rgba(${t.line.match(/\d+,\d+,\d+/)[0]},${parseFloat(t.line.match(/[\d.]+\)$/)[0])*bMult})`);
   } else if (theme === 'destiny') {
-    root.style.setProperty('--theme-glow', 'rgba(200,168,75,0.35)');
-    root.style.setProperty('--theme-line', 'rgba(200,168,75,0.16)');
+    root.style.setProperty('--theme-glow', `rgba(200,168,75,${0.35*bMult})`);
+    root.style.setProperty('--theme-line', `rgba(200,168,75,${0.16*bMult})`);
   }
 
   // ── Accent ──
@@ -2876,6 +2885,8 @@ function startStarfield() {
 }
 
 function updateThemePickerUI() {
+  const brightnessEl = document.getElementById('themeBrightness');
+  if (brightnessEl) brightnessEl.value = currentBrightness;
   // Update theme swatch active states — handles class-0/1/2
   document.querySelectorAll('.theme-swatch').forEach(el => {
     const active = el.dataset.theme === currentTheme;
@@ -2923,7 +2934,11 @@ function initThemePicker() {
   document.querySelectorAll('.accent-swatch').forEach(el => {
     el.addEventListener('click', () => applyTheme(currentTheme, el.dataset.accent));
   });
-  // Draw static swatch previews on init
+  const brightnessEl = document.getElementById('themeBrightness');
+  if (brightnessEl) {
+    brightnessEl.value = currentBrightness;
+    brightnessEl.addEventListener('input', () => applyTheme(currentTheme, currentAccent, Number(brightnessEl.value)));
+  }
   updateThemePickerUI();
 }
 
@@ -3082,9 +3097,9 @@ function renderTrashMode() {
 
   // Wire drag/drop zones
   panel.querySelectorAll('.tm-drop-zone').forEach(zone=>{
-    zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.style.background='rgba(200,168,75,0.12)'; zone.style.borderColor='var(--accent)'; });
-    zone.addEventListener('dragleave', ()=>{ zone.style.background=''; zone.style.borderColor=''; });
-    zone.addEventListener('drop', e=>{ e.preventDefault(); zone.style.background=''; zone.style.borderColor=''; onTMDrop(e, zone.dataset.zone, Number(zone.dataset.slot)); });
+    zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.style.background='color-mix(in srgb, var(--accent) 15%, transparent)'; zone.style.borderColor='var(--accent)'; zone.style.boxShadow='inset 0 0 0 2px var(--accent)'; });
+    zone.addEventListener('dragleave', ()=>{ zone.style.background=''; zone.style.borderColor=''; zone.style.boxShadow=''; });
+    zone.addEventListener('drop', e=>{ e.preventDefault(); zone.style.background=''; zone.style.borderColor=''; zone.style.boxShadow=''; onTMDrop(e, zone.dataset.zone, Number(zone.dataset.slot)); });
   });
 }
 
@@ -3183,45 +3198,115 @@ function showItemTooltip(event, iid) {
   const stats = statsData[iid];
   const socks = socketData[iid];
   const name = def?.displayProperties?.name||'Item';
-  const type = def?.itemTypeAndTierDisplayName||'';
+  const type = def?.itemTypeDisplayName||'';
+  const tier = def?.inventory?.tierType||0;
+  const rk = RARITY[tier]||'common';
   const power = inst?.primaryStat?.value||'—';
   const isWeapon = WEAPON_BUCKETS.has(getEffectiveBucketHash(item));
+  const iconPath = def?.displayProperties?.hasIcon ? `https://www.bungie.net${def.displayProperties.icon}` : '';
+  const flavorText = def?.flavorText||'';
+  const mw = isMasterworked(iid);
 
-  // Perks for weapons
-  let perksHtml = '';
-  if (isWeapon && socks?.sockets) {
-    const perks = [];
-    socks.sockets.forEach(s=>{
-      if (!s.plugHash) return;
-      const pd = getItemDef(s.plugHash);
-      const ident = pd?.plug?.plugCategoryIdentifier||'';
-      if (ident.includes('traits')||ident.includes('perks')||(ident.includes('frames')&&s!==socks.sockets[0]))
-        perks.push(pd?.displayProperties?.name||'');
-    });
-    if (perks.length) perksHtml = `<div style="margin-top:6px;font-size:11px;color:var(--text-muted);">${perks.filter(Boolean).join(' · ')}</div>`;
+  // Rarity colors
+  const rarityColors = {exotic:'#ceae33',legendary:'#7a4c96',rare:'#5076a3',uncommon:'#366f42',common:'#c3bcb4'};
+  const rarityColor = rarityColors[rk]||'#c3bcb4';
+
+  // Intrinsic frame (socket 0)
+  let intrinsicHtml = '';
+  if (socks?.sockets?.[0]?.plugHash) {
+    const pd = getItemDef(socks.sockets[0].plugHash);
+    const pname = pd?.displayProperties?.name||'';
+    const pdesc = pd?.displayProperties?.description||'';
+    const picon = pd?.displayProperties?.hasIcon ? `https://www.bungie.net${pd.displayProperties.icon}` : '';
+    if (pname && !pname.toLowerCase().includes('empty')) {
+      intrinsicHtml = `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid rgba(255,255,255,0.08);border-bottom:1px solid rgba(255,255,255,0.08);margin:8px 0;">
+        ${picon?`<img src="${picon}" style="width:32px;height:32px;flex-shrink:0;" />`:''}
+        <div><div style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;color:var(--text);">${pname}</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${pdesc}</div></div>
+      </div>`;
+    }
   }
 
-  // Stats for armor
+  // Weapon perk columns
+  let perksHtml = '';
+  if (isWeapon && socks?.sockets) {
+    const cols = extractWeaponCols(item, iid, socks);
+    if (cols.length) {
+      perksHtml = `<div style="display:grid;grid-template-columns:repeat(${cols.length},1fr);gap:6px;margin-bottom:8px;">
+        ${cols.map(col=>`<div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:4px;border-bottom:1px solid var(--border);padding-bottom:3px;">${col.label}</div>
+          ${col.hashes.map(h=>{
+            const pd=getItemDef(h); const pn=pd?.displayProperties?.name||'';
+            const isEq = h===col.equippedHash;
+            return `<div style="font-size:11px;padding:2px 0;color:${isEq?'var(--accent)':'var(--text-muted)'};font-weight:${isEq?600:400};">${isEq?'▸ ':''  }${pn}</div>`;
+          }).join('')}
+        </div>`).join('')}
+      </div>`;
+    }
+  }
+
+  // Armor stats
   let statsHtml = '';
   if (!isWeapon && stats?.stats) {
-    const vals = ARMOR_STAT_HASHES.map(h=>({n:ARMOR_STAT_NAMES[h],v:stats.stats[h]?.value||0})).filter(s=>s.v>0);
-    if (vals.length) statsHtml = `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px 10px;">${vals.map(s=>`<span style="font-size:11px;color:var(--text-muted);">${s.n}: <b style="color:var(--text)">${s.v}</b></span>`).join('')}</div>`;
+    const entries = ARMOR_STAT_HASHES.map(h=>({n:ARMOR_STAT_NAMES[h],v:stats.stats[h]?.value||0})).filter(s=>s.v>0);
+    const total = entries.reduce((a,s)=>a+s.v,0);
+    if (entries.length) {
+      statsHtml = `<div style="margin-bottom:8px;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;">Stats <span style="color:var(--accent);">${total}</span></div>
+        ${entries.map(s=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+          <div style="font-size:10px;color:var(--text-muted);width:52px;flex-shrink:0;">${s.n}</div>
+          <div style="flex:1;height:3px;background:var(--surface2);">
+            <div style="height:3px;width:${Math.min(s.v,100)}%;background:var(--accent);"></div>
+          </div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;color:var(--text);width:20px;text-align:right;">${s.v}</div>
+        </div>`).join('')}
+      </div>`;
+    }
+  }
+
+  // Weapon stats
+  let wStatsHtml = '';
+  if (isWeapon && stats?.stats) {
+    const entries = WEAPON_STAT_HASHES.map(h=>({n:WEAPON_STAT_NAMES[h],v:stats.stats[h]?.value})).filter(s=>s.v!==undefined&&s.v>0);
+    if (entries.length) {
+      wStatsHtml = `<div style="margin-bottom:8px;">
+        ${entries.map(s=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+          <div style="font-size:10px;color:var(--text-muted);width:72px;flex-shrink:0;">${s.n}</div>
+          <div style="flex:1;height:3px;background:var(--surface2);">
+            <div style="height:3px;width:${Math.min(s.v,100)}%;background:var(--accent);"></div>
+          </div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;color:var(--text);width:24px;text-align:right;">${s.v}</div>
+        </div>`).join('')}
+      </div>`;
+    }
   }
 
   const tt = document.createElement('div');
-  tt.style.cssText = `position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--accent);padding:10px 14px;max-width:240px;pointer-events:none;font-family:'Barlow',sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.5);`;
+  tt.style.cssText = `position:fixed;z-index:9999;background:#0e1015;border:1px solid ${rarityColor};padding:0;max-width:280px;min-width:220px;pointer-events:none;font-family:'Barlow',sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.7);`;
   tt.innerHTML = `
-    <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--text);">${name}</div>
-    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${type}</div>
-    <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:var(--accent);margin-top:4px;">${power}</div>
-    ${perksHtml}${statsHtml}`;
+    <div style="height:4px;background:${rarityColor};"></div>
+    <div style="padding:10px 12px;">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;">
+        ${iconPath?`<div style="width:56px;height:56px;flex-shrink:0;background:var(--surface2);${mw?'outline:2px solid var(--exotic-col);outline-offset:-2px;':''}"><img src="${iconPath}" style="width:100%;height:100%;object-fit:cover;display:block;" /></div>`:''}
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;color:var(--text);line-height:1.2;">${name}</div>
+          <div style="font-size:10px;color:${rarityColor};margin-top:2px;text-transform:uppercase;letter-spacing:.06em;">${type}</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--accent);margin-top:4px;">${power}</div>
+        </div>
+      </div>
+      ${intrinsicHtml}
+      ${perksHtml}
+      ${statsHtml}
+      ${wStatsHtml}
+      ${flavorText?`<div style="font-size:10px;color:var(--text-dim);font-style:italic;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px;margin-top:6px;">"${flavorText}"</div>`:''}
+    </div>`;
 
   document.body.appendChild(tt);
   hoverTooltip = tt;
 
-  // Position near cursor
-  const x = Math.min(event.clientX + 12, window.innerWidth - 260);
-  const y = Math.min(event.clientY + 12, window.innerHeight - 200);
+  const ttW = 280, ttH = 400;
+  const x = Math.min(event.clientX + 14, window.innerWidth - ttW - 10);
+  const y = Math.min(event.clientY + 14, window.innerHeight - ttH - 10);
   tt.style.left = x+'px';
   tt.style.top  = y+'px';
 }
