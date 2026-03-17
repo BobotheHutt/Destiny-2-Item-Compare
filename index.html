@@ -28,8 +28,8 @@
   --fav: #4caf7d;
   --junk: #e05555;
   --infuse: #4a9fd4;
-  --theme-glow: rgba(200,168,75,0.12);
-  --theme-line: rgba(200,168,75,0.06);
+  --theme-glow: rgba(200,168,75,0.22);
+  --theme-line: rgba(200,168,75,0.10);
 }
 body { background: var(--bg); color: var(--text); font-family: 'Barlow', sans-serif; font-weight: 300; min-height: 100vh; position: relative; }
 body::before {
@@ -325,7 +325,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 
   <div class="header">
     <div class="logo-mark"><div class="logo-inner"></div></div>
-    <h1>Guardian <span>Lookup</span></h1>
+    <h1>Guardian <span>Gear Center</span></h1>
   </div>
 
   <div class="form-row" id="loginRow">
@@ -343,18 +343,20 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
       <button class="main-tab active" onclick="switchMain('characters')">Characters</button>
       <button class="main-tab" onclick="switchMain('weapons')">Weapons</button>
       <button class="main-tab" onclick="switchMain('armor')">Armor</button>
-      <button class="main-tab" onclick="switchMain('favorites')">Locked</button>
-      <button class="main-tab" onclick="switchMain('junk')">Junk</button>
+      <button class="main-tab" onclick="switchMain('favorites')">Lock Sync</button>
+      <button class="main-tab" onclick="switchMain('junk')">Trash</button>
+      <button class="main-tab" onclick="switchMain('trashmode')">Trash Mode</button>
     </div>
     <div id="panel-characters" class="main-panel active"></div>
     <div id="panel-weapons" class="main-panel"></div>
     <div id="panel-armor" class="main-panel"></div>
     <div id="panel-favorites" class="main-panel"></div>
     <div id="panel-junk" class="main-panel"></div>
+    <div id="panel-trashmode" class="main-panel"></div>
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v50</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v51</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -465,9 +467,9 @@ let compareSort          = 'power';
 
 // Class-based themes: shift accent color and background glow per class
 const CLASS_THEMES = {
-  0: { accent:'#c8a84b', accent2:'#e8c96a', glow:'rgba(200,168,75,0.15)',  line:'rgba(200,168,75,0.07)'  }, // Titan - gold
-  1: { accent:'#4a9fd4', accent2:'#6abde8', glow:'rgba(74,159,212,0.15)',  line:'rgba(74,159,212,0.07)' }, // Hunter - blue
-  2: { accent:'#9b6fc4', accent2:'#b88de0', glow:'rgba(155,111,196,0.15)', line:'rgba(155,111,196,0.07)'}, // Warlock - purple
+  0: { accent:'#c8a84b', accent2:'#e8c96a', glow:'rgba(200,168,75,0.25)',  line:'rgba(200,168,75,0.11)'  }, // Titan - gold
+  1: { accent:'#4a9fd4', accent2:'#6abde8', glow:'rgba(74,159,212,0.25)',  line:'rgba(74,159,212,0.11)' }, // Hunter - blue
+  2: { accent:'#9b6fc4', accent2:'#b88de0', glow:'rgba(155,111,196,0.25)', line:'rgba(155,111,196,0.11)'}, // Warlock - purple
 };
 function applyClassTheme(classType) {
   const theme = CLASS_THEMES[classType] || CLASS_THEMES[0];
@@ -628,10 +630,11 @@ function showError(m)   { const e=document.getElementById('error'); e.textConten
 function clearError()   { document.getElementById('error').style.display='none'; }
 
 function switchMain(tab) {
-  document.querySelectorAll('.main-tab').forEach((t,i)=>t.classList.toggle('active',['characters','weapons','armor','favorites','junk'][i]===tab));
+  document.querySelectorAll('.main-tab').forEach((t,i)=>t.classList.toggle('active',['characters','weapons','armor','favorites','junk','trashmode'][i]===tab));
   document.querySelectorAll('.main-panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+tab));
   if (tab==='junk') renderMarkTab('junk');
   if (tab==='favorites') renderMarkTab('fav');
+  if (tab==='trashmode') renderTrashMode();
 }
 
 // ===================== OAUTH =====================
@@ -844,6 +847,7 @@ async function searchPlayer() {
     allItems = [];
     characters.sort((a,b)=>new Date(b.dateLastPlayed)-new Date(a.dateLastPlayed));
     profileInfo.characterIds = characters.map(c=>c.characterId);
+    profileInfo.characterClasses = Object.fromEntries(characters.map(c=>[c.characterId, c.classType]));
     characters.forEach(c=>{
       const loc = CLASS_NAMES[c.classType]||'Character';
       (charEquip[c.characterId]?.items||[]).forEach(i=>allItems.push({...normItem(i),loc,equipped:true,characterId:c.characterId}));
@@ -2599,8 +2603,8 @@ function applyTheme(theme, accent) {
     root.style.setProperty('--theme-glow', t.glow);
     root.style.setProperty('--theme-line', t.line);
   } else if (theme === 'destiny') {
-    root.style.setProperty('--theme-glow', 'rgba(200,168,75,0.10)');
-    root.style.setProperty('--theme-line', 'rgba(200,168,75,0.05)');
+    root.style.setProperty('--theme-glow', 'rgba(200,168,75,0.22)');
+    root.style.setProperty('--theme-line', 'rgba(200,168,75,0.10)');
   }
 
   // ── Accent ──
@@ -2724,6 +2728,281 @@ function initThemePicker() {
   });
   // Draw static swatch previews on init
   updateThemePickerUI();
+}
+
+// ===================== TRASH MODE =====================
+let trashModeCharId = null;
+let trashModeDragItem = null;
+let hoverTimer = null;
+let hoverTooltip = null;
+
+const SLOT_ORDER = [
+  {name:'Kinetic',    bucket:1498876634, type:'weapon'},
+  {name:'Energy',     bucket:2465295065, type:'weapon'},
+  {name:'Heavy',      bucket:953998645,  type:'weapon'},
+  {name:'Helmet',     bucket:3448274439, type:'armor'},
+  {name:'Gauntlets',  bucket:3551918588, type:'armor'},
+  {name:'Chest',      bucket:14239492,   type:'armor'},
+  {name:'Legs',       bucket:20886954,   type:'armor'},
+  {name:'Class Item', bucket:1585787867, type:'armor'},
+];
+
+function renderTrashMode() {
+  const panel = document.getElementById('panel-trashmode');
+  if (!panel) return;
+
+  const characters = Object.values(allItems.reduce((acc,i)=>{
+    if (i.characterId && i.characterId !== 'null') acc[i.characterId]=i.characterId;
+    return acc;
+  },{}));
+
+  // Get characters from profileInfo
+  const chars = profileInfo.characterIds || [];
+  if (!chars.length) {
+    panel.innerHTML = `<div class="no-junk">Load your guardian first.</div>`;
+    return;
+  }
+  if (!trashModeCharId || !chars.includes(trashModeCharId)) trashModeCharId = chars[0];
+
+  // Vault capacity
+  const vaultItems = allItems.filter(i=>i.loc==='Vault' && (WEAPON_BUCKETS.has(getEffectiveBucketHash(i))||ARMOR_BUCKETS.has(getEffectiveBucketHash(i))));
+  const vaultCount = vaultItems.length;
+  const vaultMax = 600;
+  const vaultPct = Math.min(100, Math.round(vaultCount/vaultMax*100));
+  const vaultColor = vaultPct>90?'var(--junk)':vaultPct>75?'var(--accent)':'var(--fav)';
+
+  // Character selector
+  const charSelHtml = chars.map(cid=>{
+    const classType = profileInfo.characterClasses?.[cid] ?? 0;
+    const className = CLASS_NAMES[classType]||`Character`;
+    const isActive = cid===trashModeCharId;
+    return `<button onclick="selectTrashChar('${cid}')" style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;background:${isActive?'var(--accent)':'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?'var(--accent)':'var(--border2)'};cursor:pointer;">${className}</button>`;
+  }).join('');
+
+  // Build slot rows
+  const slotsHtml = SLOT_ORDER.map(slot=>{
+    // Left: character items for this slot
+    const charItems = allItems.filter(i=>{
+      if (i.characterId !== trashModeCharId) return false;
+      return getEffectiveBucketHash(i) === slot.bucket;
+    });
+    // Right: junk items for this slot from anywhere
+    const junkItems = allItems.filter(i=>{
+      if (getMark(i.itemInstanceId) !== 'junk') return false;
+      return getEffectiveBucketHash(i) === slot.bucket;
+    });
+
+    const renderIcon = (item, side) => {
+      const def = getItemDef(item.itemHash);
+      const icon = def?.displayProperties?.hasIcon ? `https://www.bungie.net${def.displayProperties.icon}` : '';
+      const inst = instanceData[item.itemInstanceId];
+      const power = inst?.primaryStat?.value||'';
+      const isEquipped = item.equipped;
+      const isVault = item.loc==='Vault';
+      const locIcon = isVault ? '📦' : item.loc?.[0]||'?';
+      const rk = rarityKey(def);
+      return `<div class="tm-icon rarity-border-${rk} ${isEquipped?'tm-equipped':''}"
+        data-iid="${item.itemInstanceId}"
+        data-side="${side}"
+        data-slot="${slot.bucket}"
+        draggable="true"
+        style="position:relative;width:56px;height:56px;background:var(--surface2);border:1px solid var(--border2);cursor:grab;flex-shrink:0;${isEquipped?'outline:2px solid var(--accent);outline-offset:1px;':''}"
+        onmouseenter="startHoverTimer(event,'${item.itemInstanceId}')"
+        onmouseleave="clearHoverTimer()"
+        ondragstart="onTMDragStart(event,'${item.itemInstanceId}','${side}','${slot.bucket}')">
+        ${icon?`<img src="${icon}" style="width:100%;height:100%;object-fit:cover;display:block;" />`:''}
+        <div style="position:absolute;top:1px;right:2px;font-size:9px;background:rgba(0,0,0,0.7);padding:1px 3px;color:var(--text-muted);">${locIcon}</div>
+        ${power?`<div style="position:absolute;bottom:1px;left:0;right:0;text-align:center;font-size:9px;font-family:'Barlow Condensed',sans-serif;font-weight:700;color:var(--accent);background:rgba(0,0,0,0.6);">${power}</div>`:''}
+        <button class="tm-transfer-btn" data-iid="${item.itemInstanceId}" data-side="${side}"
+          style="position:absolute;inset:0;background:rgba(0,0,0,0);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s;"
+          onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')">
+          <span style="font-size:18px;color:#fff;text-shadow:0 0 4px #000;">⇄</span>
+        </button>
+      </div>`;
+    };
+
+    const charIcons = charItems.map(i=>renderIcon(i,'char')).join('');
+    const junkIcons = junkItems.map(i=>renderIcon(i,'junk')).join('');
+
+    return `<div class="tm-slot-row" style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-start;">
+      <!-- Left: character items -->
+      <div class="tm-drop-zone" data-zone="char" data-slot="${slot.bucket}"
+        style="flex:1;min-height:64px;background:var(--surface);border:1px solid var(--border2);padding:6px;display:flex;flex-wrap:wrap;gap:4px;position:relative;transition:border-color .15s,background .15s;">
+        <div style="position:absolute;top:-18px;left:0;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">${slot.name}</div>
+        ${charIcons||'<div style="color:var(--text-dim);font-size:11px;padding:4px;">Empty</div>'}
+      </div>
+      <!-- Right: junk items -->
+      <div class="tm-drop-zone" data-zone="junk" data-slot="${slot.bucket}"
+        style="flex:1;min-height:64px;background:var(--surface);border:1px solid var(--junk);border-opacity:0.3;padding:6px;display:flex;flex-wrap:wrap;gap:4px;position:relative;transition:border-color .15s,background .15s;">
+        <div style="position:absolute;top:-18px;left:0;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--junk);opacity:0.7;">Trash</div>
+        ${junkIcons||'<div style="color:var(--text-dim);font-size:11px;padding:4px;">No junk</div>'}
+      </div>
+    </div>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div style="margin-top:20px;">
+      <!-- Vault bar -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:8px 12px;background:var(--surface);border:1px solid var(--border2);">
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);">Vault</span>
+        <div style="flex:1;height:6px;background:var(--surface2);border-radius:3px;">
+          <div style="height:6px;width:${vaultPct}%;background:${vaultColor};border-radius:3px;transition:width .3s;"></div>
+        </div>
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;color:${vaultColor};">${vaultCount} / ${vaultMax}</span>
+      </div>
+      <!-- Character selector -->
+      <div style="display:flex;gap:6px;margin-bottom:20px;">${charSelHtml}</div>
+      <!-- Slot grid header -->
+      <div style="display:flex;gap:8px;margin-bottom:6px;">
+        <div style="flex:1;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);text-align:center;">Character Inventory</div>
+        <div style="flex:1;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--junk);opacity:0.8;text-align:center;">Junk Items</div>
+      </div>
+      <!-- Slots -->
+      <div style="padding-top:22px;">${slotsHtml}</div>
+    </div>`;
+
+  // Wire up icon hover show/hide
+  panel.querySelectorAll('.tm-icon').forEach(el=>{
+    el.addEventListener('mouseenter', ()=>{ el.querySelector('.tm-transfer-btn').style.opacity='1'; });
+    el.addEventListener('mouseleave', ()=>{ el.querySelector('.tm-transfer-btn').style.opacity='0'; });
+  });
+
+  // Wire drag/drop zones
+  panel.querySelectorAll('.tm-drop-zone').forEach(zone=>{
+    zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.style.background='rgba(200,168,75,0.12)'; zone.style.borderColor='var(--accent)'; });
+    zone.addEventListener('dragleave', ()=>{ zone.style.background=''; zone.style.borderColor=''; });
+    zone.addEventListener('drop', e=>{ e.preventDefault(); zone.style.background=''; zone.style.borderColor=''; onTMDrop(e, zone.dataset.zone, Number(zone.dataset.slot)); });
+  });
+}
+
+function selectTrashChar(cid) {
+  trashModeCharId = cid;
+  renderTrashMode();
+}
+
+function onTMDragStart(event, iid, side, slot) {
+  trashModeDragItem = {iid, side, slot: Number(slot)};
+  event.dataTransfer.effectAllowed = 'move';
+}
+
+function onTMDrop(event, zone, slotBucket) {
+  if (!trashModeDragItem) return;
+  const {iid, side} = trashModeDragItem;
+  trashModeDragItem = null;
+  if (side === zone) return; // dropped in same zone, no-op
+  transferItem(iid, side, slotBucket);
+}
+
+async function transferItem(iid, side, slotBucket) {
+  const item = allItems.find(i=>i.itemInstanceId===iid);
+  if (!item) return;
+  const def = getItemDef(item.itemHash);
+  const isInVault = item.loc === 'Vault';
+  const isOnChar = item.characterId === trashModeCharId;
+
+  const {membershipType} = profileInfo;
+  const headers = {'X-API-Key': BUNGIE_API_KEY, 'Authorization': `Bearer ${oauthToken}`, 'Content-Type': 'application/json'};
+
+  // Determine transfer direction
+  let transferToVault, characterId;
+  if (side === 'char') {
+    // Character item → vault
+    transferToVault = true;
+    characterId = trashModeCharId;
+  } else {
+    // Junk item → character (from wherever it is)
+    transferToVault = false;
+    characterId = trashModeCharId;
+    // If it's on another character, need to vault it first then transfer
+    if (!isInVault && item.characterId !== trashModeCharId) {
+      // Step 1: move to vault from source character
+      const r1 = await fetch('https://www.bungie.net/Platform/Destiny2/Actions/Items/TransferItem/', {
+        method:'POST', headers,
+        body: JSON.stringify({itemReferenceHash: item.itemHash, itemId: iid, stackSize:1, characterId: item.characterId, transferToVault: true, membershipType})
+      });
+      const d1 = await r1.json();
+      if (d1.ErrorCode !== 1) { alert(`Transfer failed: ${d1.Message}`); return; }
+      await new Promise(r=>setTimeout(r,300));
+    }
+  }
+
+  const resp = await fetch('https://www.bungie.net/Platform/Destiny2/Actions/Items/TransferItem/', {
+    method:'POST', headers,
+    body: JSON.stringify({itemReferenceHash: item.itemHash, itemId: iid, stackSize:1, characterId, transferToVault, membershipType})
+  });
+  const data = await resp.json();
+  if (data.ErrorCode !== 1) { alert(`Transfer failed: ${data.Message}`); return; }
+
+  // Update local state
+  if (transferToVault) {
+    item.loc = 'Vault';
+    item.characterId = null;
+    item.equipped = false;
+  } else {
+    item.loc = CLASS_NAMES[allItems.find(i=>i.characterId===trashModeCharId&&i.equipped)?.classType]||'Character';
+    item.characterId = trashModeCharId;
+  }
+  renderTrashMode();
+}
+
+// Hover tooltip
+function startHoverTimer(event, iid) {
+  clearHoverTimer();
+  hoverTimer = setTimeout(()=>showItemTooltip(event, iid), 3000);
+}
+function clearHoverTimer() {
+  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer=null; }
+  if (hoverTooltip) { hoverTooltip.remove(); hoverTooltip=null; }
+}
+function showItemTooltip(event, iid) {
+  const item = allItems.find(i=>i.itemInstanceId===iid);
+  if (!item) return;
+  const def = getItemDef(item.itemHash);
+  const inst = instanceData[iid];
+  const stats = statsData[iid];
+  const socks = socketData[iid];
+  const name = def?.displayProperties?.name||'Item';
+  const type = def?.itemTypeAndTierDisplayName||'';
+  const power = inst?.primaryStat?.value||'—';
+  const isWeapon = WEAPON_BUCKETS.has(getEffectiveBucketHash(item));
+
+  // Perks for weapons
+  let perksHtml = '';
+  if (isWeapon && socks?.sockets) {
+    const perks = [];
+    socks.sockets.forEach(s=>{
+      if (!s.plugHash) return;
+      const pd = getItemDef(s.plugHash);
+      const ident = pd?.plug?.plugCategoryIdentifier||'';
+      if (ident.includes('traits')||ident.includes('perks')||(ident.includes('frames')&&s!==socks.sockets[0]))
+        perks.push(pd?.displayProperties?.name||'');
+    });
+    if (perks.length) perksHtml = `<div style="margin-top:6px;font-size:11px;color:var(--text-muted);">${perks.filter(Boolean).join(' · ')}</div>`;
+  }
+
+  // Stats for armor
+  let statsHtml = '';
+  if (!isWeapon && stats?.stats) {
+    const vals = ARMOR_STAT_HASHES.map(h=>({n:ARMOR_STAT_NAMES[h],v:stats.stats[h]?.value||0})).filter(s=>s.v>0);
+    if (vals.length) statsHtml = `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px 10px;">${vals.map(s=>`<span style="font-size:11px;color:var(--text-muted);">${s.n}: <b style="color:var(--text)">${s.v}</b></span>`).join('')}</div>`;
+  }
+
+  const tt = document.createElement('div');
+  tt.style.cssText = `position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--accent);padding:10px 14px;max-width:240px;pointer-events:none;font-family:'Barlow',sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.5);`;
+  tt.innerHTML = `
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--text);">${name}</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${type}</div>
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:var(--accent);margin-top:4px;">${power}</div>
+    ${perksHtml}${statsHtml}`;
+
+  document.body.appendChild(tt);
+  hoverTooltip = tt;
+
+  // Position near cursor
+  const x = Math.min(event.clientX + 12, window.innerWidth - 260);
+  const y = Math.min(event.clientY + 12, window.innerHeight - 200);
+  tt.style.left = x+'px';
+  tt.style.top  = y+'px';
 }
 
 // ===================== INIT =====================
