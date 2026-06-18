@@ -140,7 +140,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 .eq-title { font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-dim); margin-bottom:5px; display:flex; align-items:center; gap:6px; }
 .eq-title::after { content:''; flex:1; height:1px; background:var(--border); }
 .item-row { display:flex; align-items:center; gap:8px; padding:5px 8px; background:var(--surface2); border:1px solid var(--border); margin-bottom:3px; }
-.item-icon { width:32px; height:32px; flex-shrink:0; background:var(--surface); overflow:hidden; }
+.item-icon { width:32px; height:32px; flex-shrink:0; background:var(--surface); overflow:hidden; position:relative; }
 .item-icon img { width:100%; height:100%; object-fit:cover; display:block; }
 .item-icon-ph { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--text-dim); }
 .item-info { flex:1; min-width:0; }
@@ -277,7 +277,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 .junk-table td { padding:6px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
 .junk-table tr:hover td { background:var(--surface2); }
 .junk-table tr.done-in-dim td { opacity:0.4; text-decoration:line-through; }
-.junk-icon { width:36px; height:36px; overflow:hidden; background:var(--surface2); flex-shrink:0; }
+.junk-icon { width:36px; height:36px; overflow:hidden; background:var(--surface2); flex-shrink:0; position:relative; }
 .junk-icon img { width:100%; height:100%; object-fit:cover; display:block; }
 .junk-name-cell { display:flex; align-items:center; gap:8px; }
 .junk-item-name { font-size:13px; color:var(--text); font-weight:400; }
@@ -373,7 +373,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v78</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v79</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -655,8 +655,13 @@ function isCrafted(itemInstanceId) {
 }
 function craftedBadgeSvg() {
   return `<div class="crafted-badge" title="Crafted">
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#3b82f6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M14.7 6.3a4 4 0 1 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.1 2.1-2-2 2.1-2.1z"/>
+    <svg viewBox="0 0 16 16" width="13" height="13">
+      <rect x="0" y="0" width="4.5" height="4.5" fill="#2ee65c"/>
+      <rect x="11.5" y="0" width="4.5" height="4.5" fill="#2ee65c"/>
+      <rect x="0" y="11.5" width="4.5" height="4.5" fill="#2ee65c"/>
+      <rect x="11.5" y="11.5" width="4.5" height="4.5" fill="#2ee65c"/>
+      <rect x="6.7" y="3" width="2.6" height="10" fill="#2ee65c"/>
+      <rect x="3" y="6.7" width="10" height="2.6" fill="#2ee65c"/>
     </svg>
   </div>`;
 }
@@ -1199,9 +1204,10 @@ function renderItemRow(item) {
   const isWeapon = WEAPON_BUCKETS.has(getEffectiveBucketHash(item));
   const dmgIcon = isWeapon ? damageIcon(def) : '';
   const mwStyle = item.itemInstanceId && isMasterworked(item.itemInstanceId) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
+  const craftedB = item.itemInstanceId && isCrafted(item.itemInstanceId) ? craftedBadgeSvg() : '';
   return `<div class="item-row" onmouseenter="startHoverTimer(event,'${item.itemInstanceId}')" onmouseleave="clearHoverTimer()">
     <div class="rarity-bar rarity-${rk}"></div>
-    <div class="item-icon" style="${mwStyle}">${iconPath?`<img src="https://www.bungie.net${iconPath}" />`:`<div class="item-icon-ph">?</div>`}</div>
+    <div class="item-icon" style="${mwStyle}">${iconPath?`<img src="https://www.bungie.net${iconPath}" />`:`<div class="item-icon-ph">?</div>`}${craftedB}<div style="position:absolute;top:1px;right:1px;line-height:0;">${locBadgeSvg(item)}</div></div>
     <div class="item-info"><div class="item-name">${name}</div><div class="item-type">${dmgIcon}${dmgIcon?' ':''}${typeLabel}</div></div>
     ${power?`<div class="item-power">${power}</div>`:''}
   </div>`;
@@ -1865,7 +1871,7 @@ function renderGodRoll() {
     return `<div style="background:var(--surface);border:1px solid ${pct===100?'var(--fav)':pct>=75?'var(--accent)':'var(--border2)'};padding:12px;margin-bottom:6px;" id="citem-${iid}">
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${scoreColor};width:32px;text-align:center;flex-shrink:0;line-height:1;">${idx+1}</div>
-        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;">${icon}${isCrafted(iid)?craftedBadgeSvg():''}</div>
+        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;">${icon}${isCrafted(iid)?craftedBadgeSvg():''}<div style="position:absolute;top:1px;right:1px;line-height:0;">${locBadgeSvg(r.item)}</div></div>
         <div style="flex:1;min-width:0;">
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--text);">${name}</div>
           <div style="font-size:11px;color:var(--text-muted);">${damageIcon(def)} ${def?.itemTypeAndTierDisplayName||''} <span class="loc-badge">${loc}${r.item.equipped?' · Equipped':''}</span></div>
@@ -2056,7 +2062,7 @@ function renderArmorGodRoll() {
     return `<div style="background:var(--surface);border:1px solid ${idx===0&&anyStatSelected?'var(--fav)':'var(--border2)'};padding:12px;margin-bottom:6px;" id="citem-${iid}">
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${idx===0&&anyStatSelected?'var(--fav)':'var(--text-dim)'};width:28px;text-align:center;flex-shrink:0;">${idx+1}</div>
-        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;">${icon}</div>
+        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;">${icon}<div style="position:absolute;top:1px;right:1px;line-height:0;">${locBadgeSvg(r.item)}</div></div>
         <div style="flex:1;min-width:0;">
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--text);">${name}</div>
           <div style="font-size:11px;color:var(--text-muted);">${def?.itemTypeAndTierDisplayName||''} <span class="loc-badge">${loc}${r.item.equipped?' · Equipped':''}</span></div>
@@ -2667,7 +2673,7 @@ function renderMarkTab(markType) {
       <td class="dim-check-cell"><input type="checkbox" class="dim-checkbox" ${done?'checked':''} data-iid="${r.iid}" data-tab="${markType}" /></td>
       <td><div class="junk-name-cell">
         <div class="rarity-dot ${r.rk}"></div>
-        <div class="junk-icon" style="${isMasterworked(r.iid)?'outline:2px solid var(--exotic-col);outline-offset:-2px;':''}">${r.icon?`<img src="https://www.bungie.net${r.icon}" />`:'?'}</div>
+        <div class="junk-icon" style="${isMasterworked(r.iid)?'outline:2px solid var(--exotic-col);outline-offset:-2px;':''}">${r.icon?`<img src="https://www.bungie.net${r.icon}" />`:'?'}${r.category==='Weapon'&&isCrafted(r.iid)?craftedBadgeSvg():''}</div>
         <div><div class="junk-item-name">${r.name}</div><div class="junk-item-sub">${r.typeLabel}</div></div>
       </div></td>
       <td class="power-cell">${r.power||'&#8212;'}</td>
