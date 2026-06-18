@@ -198,7 +198,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 .mark-junk { background:var(--junk); }
 .mark-infuse { background:var(--infuse); }
 .dupe-badge { display:none; position:absolute; top:-4px; right:-4px; width:18px; height:18px; background:var(--accent); color:#0a0c0f; font-family:'Barlow Condensed',sans-serif; font-size:11px; font-weight:700; align-items:center; justify-content:center; border-radius:50%; z-index:2; }
-.crafted-badge { position:absolute; top:2px; left:2px; width:15px; height:15px; background:#2563eb; border:1px solid #1d4ed8; color:#fff; font-size:9px; display:flex; align-items:center; justify-content:center; border-radius:3px; z-index:2; line-height:1; }
+.crafted-badge { position:absolute; top:2px; left:2px; width:14px; height:14px; display:flex; align-items:center; justify-content:center; z-index:2; line-height:1; filter:drop-shadow(0 0 1px rgba(0,0,0,0.9)) drop-shadow(0 0 1px rgba(0,0,0,0.9)); }
 .grid-item-name { font-size:10px; color:var(--text-muted); text-align:center; margin-top:4px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* Compare modal */
@@ -373,7 +373,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v77</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v78</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -655,7 +655,7 @@ function isCrafted(itemInstanceId) {
 }
 function craftedBadgeSvg() {
   return `<div class="crafted-badge" title="Crafted">
-    <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#3b82f6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
       <path d="M14.7 6.3a4 4 0 1 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.1 2.1-2-2 2.1-2.1z"/>
     </svg>
   </div>`;
@@ -1639,9 +1639,11 @@ function plugColKey(identifier) {
 }
 
 // ===================== GOD ROLL MODAL =====================
+// State is keyed by position (col1-col4) rather than literal labels, since different
+// weapon types use different column names (Barrel/Blade/Bowstring, Magazine/Guard/Arrow, etc.)
 let godRollInstanceIds = [];
-let godRollWeights = {Barrel:5, Magazine:5, 'Perk 1':10, 'Perk 2':10};
-let godRollSelected = {Barrel:new Set(), Magazine:new Set(), 'Perk 1':new Set(), 'Perk 2':new Set()};
+let godRollWeights = {col1:5, col2:5, col3:10, col4:10};
+let godRollSelected = {col1:new Set(), col2:new Set(), col3:new Set(), col4:new Set()};
 let godRollExactOnly = false;
 
 function buildLightggLinks(instanceIds) {
@@ -1656,17 +1658,19 @@ function buildLightggLinks(instanceIds) {
 
 function openGodRoll(instanceIds) {
   godRollInstanceIds = instanceIds;
-  // Reset selections when opening a new weapon
-  godRollSelected = {Barrel:new Set(), Magazine:new Set(), 'Perk 1':new Set(), 'Perk 2':new Set()};
+  // Reset selections and weights to defaults when opening a new weapon
+  godRollSelected = {col1:new Set(), col2:new Set(), col3:new Set(), col4:new Set()};
+  godRollWeights = {col1:5, col2:5, col3:10, col4:10};
   renderGodRoll();
   document.getElementById('compareOverlay').classList.add('open');
 }
 
 function getWeaponRolls(instanceIds) {
-  // Returns {colLabel -> Set of perk names} across all copies, plus per-item roll data
-  const COL_ORDER = ['Barrel','Magazine','Perk 1','Perk 2'];
-  const poolByCol = {Barrel:new Map(), Magazine:new Map(), 'Perk 1':new Map(), 'Perk 2':new Map()};
-  const itemRolls = []; // [{iid, name, power, item, inst, colsMatched}]
+  // Returns positional pools (col1-col4) across all copies, plus per-item roll data,
+  // plus the real labels (Barrel/Blade/Bowstring, Magazine/Guard/Arrow, etc.) for this weapon
+  const poolByCol = {col1:new Map(), col2:new Map(), col3:new Map(), col4:new Map()};
+  const colLabels = {col1:'Barrel', col2:'Magazine', col3:'Perk 1', col4:'Perk 2'}; // fallback if nothing matched
+  const itemRolls = []; // [{iid, name, power, item, inst, cols}]
 
   instanceIds.forEach(iid => {
     const item = allItems.find(i=>i.itemInstanceId===iid);
@@ -1676,26 +1680,47 @@ function getWeaponRolls(instanceIds) {
     if (!sockets?.sockets) return;
 
     const cols = extractWeaponCols(item, iid, sockets);
-    // cols = [{label, hashes:[]}]
+    // cols = [{colKey, label, hashes:[]}]
 
-    // Add to pool
+    // Add to pool + record this weapon's real column labels
     cols.forEach(col => {
-      if (!poolByCol[col.label]) return;
+      colLabels[col.colKey] = col.label;
       col.hashes.forEach(h => {
         const d = getItemDef(h);
         const n = d?.displayProperties?.name||'';
-        if (n) poolByCol[col.label].set(n, h);
+        if (n) poolByCol[col.colKey].set(n, h);
       });
     });
 
     itemRolls.push({iid, item, inst, cols});
   });
 
-  return {poolByCol, itemRolls};
+  return {poolByCol, itemRolls, colLabels};
+}
+
+// Column 1 equivalents across weapon types — Barrel, Blade (swords), Bowstring (bows),
+// Launcher Barrel (grenade/rocket launchers), Scope, Sight
+function classifyPrimarySocket(ident) {
+  if (ident.includes('launcherbarrels')) return 'Launcher Barrel';
+  if (ident.includes('barrels')) return 'Barrel';
+  if (ident.includes('blades')) return 'Blade';
+  if (ident.includes('bowstrings')) return 'Bowstring';
+  if (ident.includes('scopes')) return 'Scope';
+  if (ident.includes('sights')) return 'Sight';
+  return null;
+}
+// Column 2 equivalents — Magazine, Battery (fusion/linear fusion/glaive), Guard (swords), Arrow (bows)
+function classifySecondarySocket(ident) {
+  if (ident.includes('arrows')) return 'Arrow';
+  if (ident.includes('batteries')) return 'Battery';
+  if (ident.includes('guards')) return 'Guard';
+  if (ident.includes('magazines')) return 'Magazine';
+  return null;
 }
 
 function extractWeaponCols(item, iid, sockets) {
   const cols = [];
+  let gotCol1 = false, gotCol2 = false, perkCount = 0;
   sockets.sockets.forEach((s, sockIdx) => {
     if (!s.plugHash) return;
     const equippedDef = getItemDef(s.plugHash);
@@ -1705,11 +1730,14 @@ function extractWeaponCols(item, iid, sockets) {
     if (excluded.some(ex=>ident.includes(ex))) return;
     if (sockIdx === 0) return;
 
-    let colLabel = null;
-    if (ident.includes('barrels')) colLabel = 'Barrel';
-    else if (ident.includes('magazines')||ident.includes('batteries')||ident.includes('guards')) colLabel = 'Magazine';
-    else if (ident.includes('traits')||ident.includes('perks')) colLabel = 'Perk';
-    else if (ident.includes('frames')) colLabel = 'Perk';
+    let colKey = null, colLabel = null;
+    if (!gotCol1 && (colLabel = classifyPrimarySocket(ident))) { colKey = 'col1'; gotCol1 = true; }
+    else if (!gotCol2 && (colLabel = classifySecondarySocket(ident))) { colKey = 'col2'; gotCol2 = true; }
+    else if (ident.includes('traits')||ident.includes('perks')||ident.includes('frames')) {
+      perkCount++;
+      colKey = perkCount===1 ? 'col3' : 'col4';
+      colLabel = perkCount===1 ? 'Perk 1' : 'Perk 2';
+    }
     else return;
 
     // Get rolled hashes
@@ -1740,12 +1768,9 @@ function extractWeaponCols(item, iid, sockets) {
       return n&&!n.toLowerCase().includes('empty')&&!n.toLowerCase().includes('default');
     });
     if (!validHashes.length) return;
-    cols.push({label: colLabel, equippedHash: s.plugHash, hashes: validHashes});
+    cols.push({colKey, label: colLabel, equippedHash: s.plugHash, hashes: validHashes});
   });
 
-  // Rename Perk -> Perk 1, Perk 2
-  let pn=0;
-  cols.forEach(c=>{ if(c.label==='Perk'){ pn++; c.label=pn===1?'Perk 1':'Perk 2'; } });
   return cols;
 }
 
@@ -1753,13 +1778,13 @@ function scoreWeapon(itemRollCols) {
   // itemRollCols = [{label, hashes:[]}]
   let score = 0;
   let maxScore = 0;
-  const COL_LABELS = ['Barrel','Magazine','Perk 1','Perk 2'];
-  COL_LABELS.forEach(col => {
-    const w = godRollWeights[col]||0;
+  const COL_KEYS = ['col1','col2','col3','col4'];
+  COL_KEYS.forEach(key => {
+    const w = godRollWeights[key]||0;
     maxScore += w;
-    const wanted = godRollSelected[col];
+    const wanted = godRollSelected[key];
     if (!wanted||!wanted.size) { score += w; return; } // no selection = full points
-    const colData = itemRollCols.find(c=>c.label===col);
+    const colData = itemRollCols.find(c=>c.colKey===key);
     if (!colData) return;
     const hasMatch = colData.hashes.some(h=>{
       const n = getItemDef(h)?.displayProperties?.name||'';
@@ -1771,13 +1796,13 @@ function scoreWeapon(itemRollCols) {
 }
 
 function renderGodRoll() {
-  const COL_LABELS = ['Barrel','Magazine','Perk 1','Perk 2'];
-  const {poolByCol, itemRolls} = getWeaponRolls(godRollInstanceIds);
+  const COL_KEYS = ['col1','col2','col3','col4'];
+  const {poolByCol, itemRolls, colLabels} = getWeaponRolls(godRollInstanceIds);
 
   const def0 = getItemDef(allItems.find(i=>i.itemInstanceId===godRollInstanceIds[0])?.itemHash);
   const weaponName = def0?.displayProperties?.name||'Weapon';
 
-  const anySelected = COL_LABELS.some(c=>godRollSelected[c]?.size>0);
+  const anySelected = COL_KEYS.some(c=>godRollSelected[c]?.size>0);
 
   // Score + sort items
   const scored = itemRolls.map(r=>{
@@ -1786,24 +1811,26 @@ function renderGodRoll() {
   }).filter(r=>!godRollExactOnly||r.score===r.maxScore)
     .sort((a,b)=>b.score-a.score);
 
-  // Build perk pool columns
-  const poolHtml = COL_LABELS.map(col=>{
-    const pool = poolByCol[col];
-    const w = godRollWeights[col]||0;
+  // Build perk pool columns — label is whatever this weapon type actually uses
+  // (Barrel/Blade/Bowstring, Magazine/Guard/Arrow, etc.), looked up via colLabels
+  const poolHtml = COL_KEYS.map(key=>{
+    const pool = poolByCol[key];
+    const w = godRollWeights[key]||0;
+    const label = colLabels[key];
     const entries = [...pool.keys()].sort();
     return `<div style="background:var(--surface);border:1px solid var(--border2);padding:10px 8px;display:flex;flex-direction:column;gap:0;">
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:5px;display:flex;align-items:center;justify-content:space-between;">
-        <span>${col}</span>
+        <span>${label}</span>
         <span style="display:flex;align-items:center;gap:4px;">
           <span style="font-size:9px;color:var(--text-dim);">pts</span>
-          <input type="number" class="gr-weight" data-col="${col}" value="${w}" min="0" max="99"
+          <input type="number" class="gr-weight" data-col="${key}" value="${w}" min="0" max="99"
             style="width:38px;background:var(--surface2);border:1px solid var(--border2);color:var(--accent);font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;text-align:center;padding:2px 4px;outline:none;" />
         </span>
       </div>
       ${entries.length ? entries.map(name=>{
-        const sel = godRollSelected[col]?.has(name);
+        const sel = godRollSelected[key]?.has(name);
         return `<label style="display:flex;align-items:center;gap:6px;padding:4px 2px;cursor:pointer;border-radius:2px;${sel?'background:rgba(200,168,75,0.1);':''}">
-          <input type="checkbox" class="gr-perk-check" data-col="${col}" data-name="${name}" ${sel?'checked':''} style="accent-color:var(--accent);cursor:pointer;width:13px;height:13px;flex-shrink:0;" />
+          <input type="checkbox" class="gr-perk-check" data-col="${key}" data-name="${name}" ${sel?'checked':''} style="accent-color:var(--accent);cursor:pointer;width:13px;height:13px;flex-shrink:0;" />
           <span style="font-size:12px;color:${sel?'var(--accent)':'var(--text)'};font-weight:${sel?600:400};line-height:1.3;">${name}</span>
         </label>`;
       }).join('') : `<span style="font-size:11px;color:var(--text-dim);font-style:italic;">No rolls found</span>`}
@@ -1823,7 +1850,7 @@ function renderGodRoll() {
     const scoreColor = pct===100?'var(--fav)':pct>=75?'var(--accent)':pct>=50?'var(--text)':'var(--text-muted)';
 
     const colsHtml = r.cols.map(col=>{
-      const wanted = godRollSelected[col.label];
+      const wanted = godRollSelected[col.colKey];
       return `<div style="flex:1;min-width:0;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:3px;">${col.label}</div>
         ${col.hashes.map(h=>{
@@ -3121,7 +3148,6 @@ function renderTrashMode() {
           ondragstart="onTMDragStart(event,'${item.itemInstanceId}','${side}','${slot.bucket}')"
           onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')">
           ${icon?`<img src="${icon}" style="width:100%;height:100%;object-fit:cover;display:block;" />`:''}
-          <div style="position:absolute;top:1px;right:2px;line-height:0;z-index:2;">${locBadgeSvg(item)}</div>
           ${equippedBadge}
           ${junkOverlay}
           ${power?`<div style="position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:700;color:#fff;background:rgba(0,0,0,0.55);padding:1px 0;z-index:2;">${power}</div>`:''}
