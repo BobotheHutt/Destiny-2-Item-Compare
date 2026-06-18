@@ -369,7 +369,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v68</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v69</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -1585,6 +1585,16 @@ let godRollWeights = {Barrel:5, Magazine:5, 'Perk 1':10, 'Perk 2':10};
 let godRollSelected = {Barrel:new Set(), Magazine:new Set(), 'Perk 1':new Set(), 'Perk 2':new Set()};
 let godRollExactOnly = false;
 
+function buildLightggLinks(instanceIds) {
+  // Collect distinct item hashes among the copies (covers reissued/season variants sharing the same name)
+  const hashes = [...new Set(instanceIds.map(iid => allItems.find(i=>i.itemInstanceId===iid)?.itemHash).filter(Boolean))];
+  // Sort newest-first using manifest index as a recency proxy (Bungie appends newer content with higher index)
+  hashes.sort((a,b) => (getItemDef(b)?.index||0) - (getItemDef(a)?.index||0));
+  return hashes.map((h,i) => `<a href="https://www.light.gg/db/items/${h}" target="_blank" rel="noopener noreferrer" title="View on light.gg${hashes.length>1?(i===0?' (newest)':' (older variant)'):''}" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;opacity:.75;flex-shrink:0;">
+    <img src="https://www.google.com/s2/favicons?domain=light.gg&sz=32" style="width:16px;height:16px;display:block;border-radius:3px;" />
+  </a>`).join('');
+}
+
 function openGodRoll(instanceIds) {
   godRollInstanceIds = instanceIds;
   // Reset selections when opening a new weapon
@@ -1791,7 +1801,10 @@ function renderGodRoll() {
 
   document.getElementById('compareContent').innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;padding-right:40px;">
-      <div class="compare-title" style="margin-bottom:0;">${weaponName} — ${godRollInstanceIds.length} ${godRollInstanceIds.length===1?'copy':'copies'}</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div class="compare-title" style="margin-bottom:0;">${weaponName} — ${godRollInstanceIds.length} ${godRollInstanceIds.length===1?'copy':'copies'}</div>
+        <div style="display:flex;align-items:center;gap:6px;">${buildLightggLinks(godRollInstanceIds)}</div>
+      </div>
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;">
         <input type="checkbox" id="grExactOnly" ${godRollExactOnly?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
         Exact match only
