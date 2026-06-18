@@ -198,7 +198,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 .mark-junk { background:var(--junk); }
 .mark-infuse { background:var(--infuse); }
 .dupe-badge { display:none; position:absolute; top:-4px; right:-4px; width:18px; height:18px; background:var(--accent); color:#0a0c0f; font-family:'Barlow Condensed',sans-serif; font-size:11px; font-weight:700; align-items:center; justify-content:center; border-radius:50%; z-index:2; }
-.crafted-badge { position:absolute; top:2px; left:2px; width:15px; height:15px; background:rgba(10,12,15,0.85); border:1px solid var(--border2); color:var(--text); font-size:9px; display:flex; align-items:center; justify-content:center; border-radius:3px; z-index:2; line-height:1; }
+.crafted-badge { position:absolute; top:2px; left:2px; width:15px; height:15px; background:#2563eb; border:1px solid #1d4ed8; color:#fff; font-size:9px; display:flex; align-items:center; justify-content:center; border-radius:3px; z-index:2; line-height:1; }
 .grid-item-name { font-size:10px; color:var(--text-muted); text-align:center; margin-top:4px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* Compare modal */
@@ -373,7 +373,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v75</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v76</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3250,18 +3250,22 @@ async function transferItem(iid, side, slotBucket) {
     // Workaround for Bungie API bug: transferring onto a character can silently
     // lock the item if another copy in that bucket was locked. Re-assert the
     // correct lock state right after landing, so it doesn't get clobbered.
-    await new Promise(r=>setTimeout(r,300));
+    await new Promise(r=>setTimeout(r,750));
     try {
+      console.log(`[lock-correction] item ${iid}: re-asserting locked=${wasLocked} on character ${characterId}`);
       const lockResp = await fetch('https://www.bungie.net/Platform/Destiny2/Actions/Items/SetLockState/', {
         method:'POST', headers,
         body: JSON.stringify({state: wasLocked, itemId: iid, characterId, membershipType})
       });
       const lockData = await lockResp.json();
+      console.log(`[lock-correction] response:`, lockData);
       if (lockData.ErrorCode === 1) {
         item.state = wasLocked ? (item.state | 1) : (item.state & ~1);
         inGameLockState[iid] = wasLocked;
+      } else {
+        console.warn(`[lock-correction] Bungie rejected the corrective call:`, lockData.Message);
       }
-    } catch(e) { /* non-fatal — the transfer itself already succeeded */ }
+    } catch(e) { console.warn('[lock-correction] request failed:', e); }
   }
   renderTrashMode();
 }
