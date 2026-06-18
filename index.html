@@ -369,7 +369,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v70</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v71</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3006,7 +3006,7 @@ function renderTrashMode() {
   // Vault capacity
   const vaultItems = allItems.filter(i=>i.loc==='Vault' && (WEAPON_BUCKETS.has(getEffectiveBucketHash(i))||ARMOR_BUCKETS.has(getEffectiveBucketHash(i))));
   const vaultCount = vaultItems.length;
-  const vaultMax = 1000;
+  const vaultMax = 1300;
   const vaultPct = Math.min(100, Math.round(vaultCount/vaultMax*100));
   const nearFull = vaultCount >= vaultMax - 10;
   const vaultColor = nearFull ? 'var(--junk)' : 'var(--fav)';
@@ -3161,8 +3161,8 @@ async function transferItem(iid, side, slotBucket) {
   // Vault space check — any move that goes through vault needs room
   const vaultCount = allItems.filter(i=>i.loc==='Vault' && (WEAPON_BUCKETS.has(getEffectiveBucketHash(i))||ARMOR_BUCKETS.has(getEffectiveBucketHash(i)))).length;
   const needsVaultSpace = side === 'char' || (side === 'junk' && !isInVault);
-  if (needsVaultSpace && vaultCount >= 1000) {
-    alert('Vault is full (1000/1000). Clear some space before transferring.');
+  if (needsVaultSpace && vaultCount >= 1300) {
+    alert('Vault is full (1300/1300). Clear some space before transferring.');
     return;
   }
 
