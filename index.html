@@ -373,7 +373,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v79</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v80</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3335,6 +3335,7 @@ function showItemTooltip(event, iid) {
   if (!item) return;
   const def = getItemDef(item.itemHash);
   const inst = instanceData[iid];
+  console.log('[gear-tier-debug] raw instance data for', def?.displayProperties?.name, inst);
   const stats = statsData[iid];
   const socks = socketData[iid];
   const name = def?.displayProperties?.name||'Item';
