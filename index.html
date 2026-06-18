@@ -358,7 +358,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
       <button class="main-tab" onclick="switchMain('armor')">Armor</button>
       <button class="main-tab" onclick="switchMain('favorites')">Lock Sync</button>
       <button class="main-tab" onclick="switchMain('junk')">Trash</button>
-      <button class="main-tab" onclick="switchMain('trashmode')">Trash Mode</button>
+      <button class="main-tab" onclick="switchMain('trashmode')">Delete Mode</button>
     </div>
     <div id="panel-characters" class="main-panel active"></div>
     <div id="panel-weapons" class="main-panel"></div>
@@ -369,7 +369,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v69</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v70</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -2603,54 +2603,65 @@ function renderMarkTab(markType) {
 
     const slotMap = {};
     catRows.forEach(r=>{
-      if (!slotMap[r.slotName]) slotMap[r.slotName]={names:{}};
+      if (!slotMap[r.slotName]) slotMap[r.slotName]={names:{}, rows:[]};
       if (!slotMap[r.slotName].names[r.name]) slotMap[r.slotName].names[r.name]=[];
       slotMap[r.slotName].names[r.name].push(r);
+      slotMap[r.slotName].rows.push(r);
     });
 
     const orderedSlots = slotOrder.filter(s=>slotMap[s])
       .concat(Object.keys(slotMap).filter(s=>!slotOrder.includes(s)));
 
+    function tableHtml(rowsArr) {
+      const armorStatHeaders = category==='Armor'
+        ? ARMOR_STAT_HASHES.map(h=>thHtml(String(h), ARMOR_STAT_NAMES[h], category)).join('')
+        : '';
+      const sorted = sortRows(rowsArr);
+      return `<table class="junk-table">
+        <thead><tr>
+          <th style="width:32px;"></th>
+          ${thHtml('name','Item',category)}
+          ${thHtml('power','Power',category)}
+          ${thHtml('loc','Location',category)}
+          <th>Perks</th>
+          ${armorStatHeaders}
+          <th>Mark</th>
+        </tr></thead>
+        <tbody>${sorted.map(rowHtml).join('')}</tbody>
+      </table>`;
+    }
+
     const slotsHtml = orderedSlots.map(slotName=>{
       const slot = slotMap[slotName];
-      const totalItems = Object.values(slot.names).flat().length;
+      const totalItems = slot.rows.length;
       const accordionKey = `${markType}:${category}:${slotName}`;
 
-      const nameAccs = Object.entries(slot.names).map(([name, nameRows])=>{
-        const def = getItemDef(nameRows[0].item.itemHash);
-        const icon = def?.displayProperties?.hasIcon?def.displayProperties.icon:null;
-        const nameKey = `${accordionKey}:${name}`;
-        const isOpen = (openNameAccordions[markType]||{})[nameKey];
-        const sorted = sortRows(nameRows);
-        const doneCount = nameRows.filter(r=>getDimDone(r.iid)).length;
-        const rk = nameRows[0].rk;
-        const armorStatHeaders = category==='Armor'
-          ? ARMOR_STAT_HASHES.map(h=>thHtml(String(h), ARMOR_STAT_NAMES[h], category)).join('')
-          : '';
-        return `<div class="name-accordion">
-          <div class="name-accordion-header ${isOpen?'open':''}" data-rawkey="${encodeURIComponent(nameKey)}" data-tab="${markType}">
-            <div class="rarity-bar rarity-${rk}" style="width:3px;align-self:stretch;flex-shrink:0;margin-right:4px;"></div>
-            <div class="name-acc-icon">${icon?`<img src="https://www.bungie.net${icon}" />`:'?'}</div>
-            <span class="name-acc-title">${name}</span>
-            <span class="name-acc-count">${nameRows.length} item${nameRows.length>1?'s':''} ${doneCount>0?'&#183; <span style="color:var(--accent)">'+doneCount+' done</span>':''}</span>
-            <span class="name-acc-arrow">&#9660;</span>
-          </div>
-          <div class="name-accordion-body ${isOpen?'open':''}">
-            <table class="junk-table">
-              <thead><tr>
-                <th style="width:32px;"></th>
-                ${thHtml('name','Item',category)}
-                ${thHtml('power','Power',category)}
-                ${thHtml('loc','Location',category)}
-                <th>Perks</th>
-                ${armorStatHeaders}
-                <th>Mark</th>
-              </tr></thead>
-              <tbody>${sorted.map(rowHtml).join('')}</tbody>
-            </table>
-          </div>
-        </div>`;
-      }).join('');
+      let bodyHtml;
+      if (markType==='junk') {
+        // Trash tab — flat, sortable table per slot, no per-name sub-grouping
+        bodyHtml = tableHtml(slot.rows);
+      } else {
+        bodyHtml = Object.entries(slot.names).map(([name, nameRows])=>{
+          const def = getItemDef(nameRows[0].item.itemHash);
+          const icon = def?.displayProperties?.hasIcon?def.displayProperties.icon:null;
+          const nameKey = `${accordionKey}:${name}`;
+          const isOpen = (openNameAccordions[markType]||{})[nameKey];
+          const doneCount = nameRows.filter(r=>getDimDone(r.iid)).length;
+          const rk = nameRows[0].rk;
+          return `<div class="name-accordion">
+            <div class="name-accordion-header ${isOpen?'open':''}" data-rawkey="${encodeURIComponent(nameKey)}" data-tab="${markType}">
+              <div class="rarity-bar rarity-${rk}" style="width:3px;align-self:stretch;flex-shrink:0;margin-right:4px;"></div>
+              <div class="name-acc-icon">${icon?`<img src="https://www.bungie.net${icon}" />`:'?'}</div>
+              <span class="name-acc-title">${name}</span>
+              <span class="name-acc-count">${nameRows.length} item${nameRows.length>1?'s':''} ${doneCount>0?'&#183; <span style="color:var(--accent)">'+doneCount+' done</span>':''}</span>
+              <span class="name-acc-arrow">&#9660;</span>
+            </div>
+            <div class="name-accordion-body ${isOpen?'open':''}">
+              ${tableHtml(nameRows)}
+            </div>
+          </div>`;
+        }).join('');
+      }
 
       // Slot sub-accordion — collapsed by default (undefined = closed)
       const isSlotOpen = (openNameAccordions[markType]||{})[accordionKey] === true;
@@ -2662,7 +2673,7 @@ function renderMarkTab(markType) {
             <span class="accordion-arrow">▼</span>
           </span>
         </div>
-        <div class="accordion-body ${isSlotOpen?'open':''}">${nameAccs}</div>
+        <div class="accordion-body ${isSlotOpen?'open':''}">${bodyHtml}</div>
       </div>`;
     }).join('');
 
@@ -2692,9 +2703,9 @@ function renderMarkTab(markType) {
 
   panel.innerHTML = `
     <div class="mark-controls">
-      <span style="font-size:13px;color:var(--text-muted);">${rows.length} items &#183; <span style="color:${accentColor}">${doneCount} done in DIM</span></span>
+      <span style="font-size:13px;color:var(--text-muted);">${rows.length} items &#183; <span style="color:${accentColor}">${doneCount} done in DIC</span></span>
       ${syncBtn}
-      <button class="unmark-btn" id="clearDimBtn" data-tab="${markType}" style="margin-left:auto;">Clear all DIM checks</button>
+      <button class="unmark-btn" id="clearDimBtn" data-tab="${markType}" style="margin-left:auto;">Clear all DIC checks</button>
     </div>
     ${weaponsHtml}${armorHtml}`;
 
@@ -2957,7 +2968,7 @@ function initThemePicker() {
   updateThemePickerUI();
 }
 
-// ===================== TRASH MODE =====================
+// ===================== DELETE MODE =====================
 let trashModeCharId = null;
 let trashModeDragItem = null;
 let hoverTimer = null;
