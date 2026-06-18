@@ -369,7 +369,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v69</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v70</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -1800,19 +1800,21 @@ function renderGodRoll() {
   }).join('') : `<div style="color:var(--text-muted);font-size:13px;padding:20px;text-align:center;">No weapons match your exact roll filter.</div>`;
 
   document.getElementById('compareContent').innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;padding-right:40px;">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <div class="compare-title" style="margin-bottom:0;">${weaponName} — ${godRollInstanceIds.length} ${godRollInstanceIds.length===1?'copy':'copies'}</div>
-        <div style="display:flex;align-items:center;gap:6px;">${buildLightggLinks(godRollInstanceIds)}</div>
+    <div style="position:sticky;top:0;z-index:2;background:var(--bg);padding-bottom:10px;margin-bottom:4px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;padding-right:40px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div class="compare-title" style="margin-bottom:0;">${weaponName} — ${godRollInstanceIds.length} ${godRollInstanceIds.length===1?'copy':'copies'}</div>
+          <div style="display:flex;align-items:center;gap:6px;">${buildLightggLinks(godRollInstanceIds)}</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+          <input type="checkbox" id="grExactOnly" ${godRollExactOnly?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
+          Exact match only
+        </label>
       </div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;">
-        <input type="checkbox" id="grExactOnly" ${godRollExactOnly?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
-        Exact match only
-      </label>
-    </div>
-    <div style="margin-bottom:14px;">
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">God Roll Builder — select your desired perks, set point values per column</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">${poolHtml}</div>
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">God Roll Builder — select your desired perks, set point values per column</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">${poolHtml}</div>
+      </div>
     </div>
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">
       ${anySelected ? 'Ranked by God Roll Score' : 'Your Copies — select perks above to rank'}
