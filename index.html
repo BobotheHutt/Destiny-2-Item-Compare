@@ -372,7 +372,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v81</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v83</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -1417,14 +1417,9 @@ function selectWeaponType(bHash, type) {
     const key = 'wg_'+(keyIdx++);
     gridClickMap[key] = {instanceIds: items.map(i=>i.itemInstanceId), type:'weapon'};
     const mwOutline = items.some(i=>isMasterworked(i.itemInstanceId)) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
-    const anyCrafted = items.some(i=>isCrafted(i.itemInstanceId));
-    const bestTier = Math.max(0, ...items.map(i=>gearTierOf(i.itemInstanceId)));
-    const bestPower = Math.max(0, ...items.map(i=>instanceData[i.itemInstanceId]?.primaryStat?.value||0));
     return `<div class="grid-item ${hasDupes?'has-dupes':''}" data-gkey="${key}" onmouseenter="startHoverTimer(event,'${items[0].itemInstanceId}')" onmouseleave="clearHoverTimer()">
       <div class="grid-item-icon" style="${mwOutline}">${icon}${markIndicators}
-        ${tierPipsSvg(bestTier,'lg')}
         ${hasDupes?`<div class="dupe-badge">${items.length}</div>`:''}
-        ${iconBottomBar(def, bestPower, anyCrafted, 'lg')}
       </div>
       <div class="grid-item-name">${name}</div>
     </div>`;
@@ -1742,13 +1737,15 @@ function classifyPrimarySocket(ident) {
   if (ident.includes('launcherbarrels')) return 'Launcher Barrel';
   if (ident.includes('barrels')) return 'Barrel';
   if (ident.includes('blades')) return 'Blade';
+  if (ident.includes('rails')) return 'Rail';
   if (ident.includes('bowstrings')) return 'Bowstring';
   if (ident.includes('scopes')) return 'Scope';
   if (ident.includes('sights')) return 'Sight';
   return null;
 }
-// Column 2 equivalents — Magazine, Battery (fusion/linear fusion/glaive), Guard (swords), Arrow (bows)
+// Column 2 equivalents — Magazine, Battery (fusion/linear fusion/glaive), Guard (swords), Arrow (bows), Bolt (heavy crossbow)
 function classifySecondarySocket(ident) {
+  if (ident.includes('bolts')) return 'Bolt';
   if (ident.includes('arrows')) return 'Arrow';
   if (ident.includes('batteries')) return 'Battery';
   if (ident.includes('guards')) return 'Guard';
@@ -1764,7 +1761,7 @@ function extractWeaponCols(item, iid, sockets) {
     const equippedDef = getItemDef(s.plugHash);
     if (!equippedDef) return;
     const ident = equippedDef.plug?.plugCategoryIdentifier||'';
-    const excluded = ['intrinsics','origins','masterworks','mods','catalysts','trackers','shader','ornaments','ghosts','holster','auras','finishers','emotes'];
+    const excluded = ['intrinsics','origins','masterworks','mods','catalysts','trackers','shader','ornaments','ghosts','holster','auras','finishers','emotes','tier','memento','skins','deepsight','crafting','cosmetic'];
     if (excluded.some(ex=>ident.includes(ex))) return;
     if (sockIdx === 0) return;
 
@@ -1776,7 +1773,12 @@ function extractWeaponCols(item, iid, sockets) {
       colKey = perkCount===1 ? 'col3' : 'col4';
       colLabel = perkCount===1 ? 'Perk 1' : 'Perk 2';
     }
-    else return;
+    else {
+      // Don't recognize this socket type — log it so we can see the real identifier
+      // (this is how Grenade/Rocket Launcher barrel-equivalent sockets, if still empty, will get diagnosed)
+      console.warn('[socket-debug] unclassified socket on', getItemDef(item.itemHash)?.displayProperties?.name, '— plugCategoryIdentifier:', ident);
+      return;
+    }
 
     // Get rolled hashes
     const itemDefLookup = getItemDef(item.itemHash);
@@ -3345,7 +3347,7 @@ async function transferItem(iid, side, slotBucket) {
     // Workaround for Bungie API bug: transferring onto a character can silently
     // lock the item if another copy in that bucket was locked. Re-assert the
     // correct lock state right after landing, so it doesn't get clobbered.
-    await new Promise(r=>setTimeout(r,750));
+    await new Promise(r=>setTimeout(r,400));
     try {
       console.log(`[lock-correction] item ${iid}: re-asserting locked=${wasLocked} on character ${characterId}`);
       const lockResp = await fetch('https://www.bungie.net/Platform/Destiny2/Actions/Items/SetLockState/', {
