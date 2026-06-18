@@ -327,7 +327,10 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   <div class="header">
     <div class="logo-mark"><div class="logo-inner"></div></div>
     <h1>Destiny 2 <span>Item Compare</span></h1>
-    <div style="margin-left:auto;">
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+      <button id="hideCraftedBtn" onclick="toggleHideCrafted()" style="background:var(--surface);border:1px solid var(--border2);color:var(--text-muted);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;cursor:pointer;">
+        Hide Crafted
+      </button>
       <button id="refreshBtn" onclick="refreshProfile()" style="display:none;background:var(--surface);border:1px solid var(--border2);color:var(--text-muted);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;cursor:pointer;align-items:center;gap:6px;">
         <span>↻</span><span id="refreshLabel">Refresh</span>
       </button>
@@ -369,7 +372,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v71</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v72</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -475,6 +478,7 @@ let profileInfo   = {};
 
 let weaponFilter  = {exotic:false, legendary:true, dupes:false, locked:false};
 let armorFilter   = {exotic:false, legendary:true, locked:false, dupes:false};
+let hideCraftedWeapons = localStorage.getItem('d2hidecrafted') === '1';
 let activeWeaponCategory = null;
 let activeWeaponType     = null;
 let activeWeaponBHash    = null;
@@ -642,6 +646,11 @@ function rarityKey(def)  { return RARITY[itemRarity(def)] || 'common'; }
 function isMasterworked(itemInstanceId) {
   const raw = allItems.find(i=>i.itemInstanceId===itemInstanceId);
   return raw ? !!(raw.state & 4) : false;
+}
+// Crafted detection — state bit 3 (value 8)
+function isCrafted(itemInstanceId) {
+  const raw = allItems.find(i=>i.itemInstanceId===itemInstanceId);
+  return raw ? !!(raw.state & 8) : false;
 }
 function masterworkBorder(itemInstanceId) {
   return isMasterworked(itemInstanceId) ? '2px solid var(--exotic-col)' : '1px solid var(--border2)';
@@ -1188,6 +1197,24 @@ function renderWeaponsTab() {
   buildWeaponAccordions();
 }
 
+function syncHideCraftedBtn() {
+  const btn = document.getElementById('hideCraftedBtn');
+  if (!btn) return;
+  btn.style.background = hideCraftedWeapons ? 'var(--accent)' : 'var(--surface)';
+  btn.style.borderColor = hideCraftedWeapons ? 'var(--accent)' : 'var(--border2)';
+  btn.style.color = hideCraftedWeapons ? '#0a0c0f' : 'var(--text-muted)';
+}
+
+function toggleHideCrafted() {
+  hideCraftedWeapons = !hideCraftedWeapons;
+  localStorage.setItem('d2hidecrafted', hideCraftedWeapons ? '1' : '0');
+  syncHideCraftedBtn();
+  renderWeaponsTab();
+  if (activeWeaponBHash && activeWeaponType) {
+    selectWeaponType(activeWeaponBHash, activeWeaponType);
+  }
+}
+
 function toggleWeaponFilter(type, btn) {
   weaponFilter[type] = !weaponFilter[type];
   // Re-render weapons tab so button styles update correctly
@@ -1214,6 +1241,7 @@ function getFilteredWeapons() {
     if (tier===6 && !weaponFilter.exotic) return false;
     if (tier===5 && !weaponFilter.legendary) return false;
     if (tier<5) return false;
+    if (hideCraftedWeapons && isCrafted(i.itemInstanceId)) return false;
     return true;
   });
   // Locked filter
@@ -3344,6 +3372,7 @@ function showItemTooltip(event, iid) {
   updateOAuthStatus();
   initThemePicker();
   applyTheme(currentTheme, currentAccent);
+  syncHideCraftedBtn();
   // Handle OAuth callback redirect - auto-load profile after login
   if (window.location.search.includes('code=')) {
     const ok = await handleOAuthCallback();
