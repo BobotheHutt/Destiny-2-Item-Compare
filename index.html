@@ -384,7 +384,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v96</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v97</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -1729,6 +1729,33 @@ let godRollWeights = {col1:5, col2:5, col3:10, col4:10};
 let godRollSelected = {col1:new Set(), col2:new Set(), col3:new Set(), col4:new Set()};
 let godRollExactOnly = false;
 
+// Per-weapon perk filter persistence — keyed by weapon name, so reopening the same weapon later
+// restores your previous checkbox selections, point weights, and Exact Match setting.
+function getGodRollPrefsKey(instanceIds) {
+  const hash = allItems.find(i=>i.itemInstanceId===instanceIds[0])?.itemHash;
+  return getItemDef(hash)?.displayProperties?.name || null;
+}
+function loadGodRollPrefs(weaponName) {
+  if (!weaponName) return null;
+  try {
+    const all = JSON.parse(localStorage.getItem('d2godrollprefs')||'{}');
+    return all[weaponName] || null;
+  } catch(e) { return null; }
+}
+function saveGodRollPrefs() {
+  const weaponName = getGodRollPrefsKey(godRollInstanceIds);
+  if (!weaponName) return;
+  try {
+    const all = JSON.parse(localStorage.getItem('d2godrollprefs')||'{}');
+    all[weaponName] = {
+      weights: godRollWeights,
+      selected: {col1:[...godRollSelected.col1], col2:[...godRollSelected.col2], col3:[...godRollSelected.col3], col4:[...godRollSelected.col4]},
+      exactOnly: godRollExactOnly,
+    };
+    localStorage.setItem('d2godrollprefs', JSON.stringify(all));
+  } catch(e) { /* localStorage unavailable — non-fatal, prefs just won't persist */ }
+}
+
 function buildLightggLinks(instanceIds) {
   // Collect distinct item hashes among the copies (covers reissued/season variants sharing the same name)
   const hashes = [...new Set(instanceIds.map(iid => allItems.find(i=>i.itemInstanceId===iid)?.itemHash).filter(Boolean))];
@@ -1741,9 +1768,22 @@ function buildLightggLinks(instanceIds) {
 
 function openGodRoll(instanceIds) {
   godRollInstanceIds = instanceIds;
-  // Reset selections and weights to defaults when opening a new weapon
-  godRollSelected = {col1:new Set(), col2:new Set(), col3:new Set(), col4:new Set()};
-  godRollWeights = {col1:5, col2:5, col3:10, col4:10};
+  const saved = loadGodRollPrefs(getGodRollPrefsKey(instanceIds));
+  if (saved) {
+    godRollWeights = {...saved.weights};
+    godRollSelected = {
+      col1: new Set(saved.selected?.col1||[]),
+      col2: new Set(saved.selected?.col2||[]),
+      col3: new Set(saved.selected?.col3||[]),
+      col4: new Set(saved.selected?.col4||[]),
+    };
+    godRollExactOnly = !!saved.exactOnly;
+  } else {
+    // No saved prefs for this weapon — reset to defaults
+    godRollSelected = {col1:new Set(), col2:new Set(), col3:new Set(), col4:new Set()};
+    godRollWeights = {col1:5, col2:5, col3:10, col4:10};
+    godRollExactOnly = false;
+  }
   renderGodRoll();
   document.getElementById('compareOverlay').classList.add('open');
 }
@@ -2005,6 +2045,7 @@ function renderGodRoll() {
       const name = cb.dataset.name;
       if (cb.checked) godRollSelected[col].add(name);
       else godRollSelected[col].delete(name);
+      saveGodRollPrefs();
       renderGodRoll();
     });
   });
@@ -2013,13 +2054,14 @@ function renderGodRoll() {
   document.querySelectorAll('#compareContent .gr-weight').forEach(inp=>{
     inp.addEventListener('change', ()=>{
       godRollWeights[inp.dataset.col] = Number(inp.value)||0;
+      saveGodRollPrefs();
       renderGodRoll();
     });
   });
 
   // Exact match toggle
   const exactEl = document.getElementById('grExactOnly');
-  if (exactEl) exactEl.addEventListener('change', ()=>{ godRollExactOnly=exactEl.checked; renderGodRoll(); });
+  if (exactEl) exactEl.addEventListener('change', ()=>{ godRollExactOnly=exactEl.checked; saveGodRollPrefs(); renderGodRoll(); });
 
   // Mark buttons
   document.querySelectorAll('#compareContent .mark-row').forEach(row=>{
@@ -3154,12 +3196,28 @@ function initThemePicker() {
 }
 
 // ===================== WORK MODE =====================
+// Preferences persist across sessions via localStorage so they don't reset every visit
+let _wmPrefs = {};
+try { _wmPrefs = JSON.parse(localStorage.getItem('d2workmodeprefs')||'{}'); } catch(e) { _wmPrefs = {}; }
+function saveWorkModePrefs() {
+  try {
+    localStorage.setItem('d2workmodeprefs', JSON.stringify({
+      filters: [...trashModeFilters],
+      category: trashModeCategory,
+      classOnly: trashModeClassOnly,
+      showAll: trashModeShowAll,
+      sort: trashModeSort,
+    }));
+  } catch(e) { /* localStorage unavailable — non-fatal, prefs just won't persist */ }
+}
+
 let trashModeCharId = null;
 let trashModeDragItem = null;
-let trashModeFilters = new Set(['junk']); // which mark type(s) the right-side list shows — multi-select, any combo of 'fav'/'junk'/'infuse'
-let trashModeCategory = 'weapon'; // 'weapon' or 'armor' — only that category's slots are processed/rendered
-let trashModeShowAll = false; // 'All' button — bypasses mark filtering entirely, shows every item in the slot regardless of mark
-let trashModeSort = 'default'; // 'default' (alphabetical), 'power', or 'type' (weapon archetype — armor falls back to default, see note below)
+let trashModeFilters = new Set(_wmPrefs.filters || ['junk']); // which mark type(s) the right-side list shows — multi-select, any combo of 'fav'/'junk'/'infuse'
+let trashModeCategory = _wmPrefs.category || 'weapon'; // 'weapon' or 'armor' — only that category's slots are processed/rendered
+let trashModeClassOnly = _wmPrefs.classOnly !== undefined ? _wmPrefs.classOnly : true; // armor only — restrict the right-side list to the selected character's class
+let trashModeShowAll = _wmPrefs.showAll || false; // 'All' button — bypasses mark filtering entirely, shows every item in the slot regardless of mark
+let trashModeSort = _wmPrefs.sort || 'default'; // 'default' (alphabetical), 'power', 'type' (weapon archetype, weapons only), or 'location'
 let hoverTimer = null;
 let hoverTooltip = null;
 
@@ -3222,17 +3280,22 @@ function renderTrashMode() {
     return `<button onclick="toggleTrashFilter('${f.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;background:${isActive?f.color:'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?f.color:'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${f.label}</button>`;
   }).join('');
 
-  // Sort selector — Default (alphabetical) and Power apply to both weapons and armor; Type applies to
-  // weapon archetype only (a reliable equivalent for armor "set" isn't available from the data we fetch)
-  const SORT_OPTIONS = [
-    {key:'default', label:'Default'},
-    {key:'power',   label:'Power'},
-    {key:'type',    label:'Type'},
-  ];
+  // Sort selector — Default/Power/Location apply to both weapons and armor; Type is weapon-only
+  // (a reliable equivalent for armor "set" isn't available from the data we fetch)
+  const SORT_OPTIONS = trashModeCategory === 'armor'
+    ? [{key:'default', label:'Default'}, {key:'power', label:'Power'}, {key:'location', label:'Location'}]
+    : [{key:'default', label:'Default'}, {key:'power', label:'Power'}, {key:'type', label:'Type'}, {key:'location', label:'Location'}];
   const sortSelHtmlSmall = SORT_OPTIONS.map(s=>{
     const isActive = s.key===trashModeSort;
     return `<button onclick="selectTrashSort('${s.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;background:${isActive?'var(--accent)':'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${s.label}</button>`;
   }).join('');
+  // Class Only toggle (armor only) — restricts the right-side list to armor matching the selected
+  // character's class, since wrong-class armor can never be worn by them anyway. Default on; flip off
+  // to see all classes' armor at once (useful when cleaning out junk across your whole account).
+  const classOnlyHtml = trashModeCategory==='armor' ? `<div style="display:flex;align-items:center;gap:6px;">
+    <span style="font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Class:</span>
+    <button onclick="toggleTrashClassOnly()" style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;background:${trashModeClassOnly?'var(--accent)':'var(--surface)'};color:${trashModeClassOnly?'#0a0c0f':'var(--text-muted)'};border:1px solid ${trashModeClassOnly?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${trashModeClassOnly?'Selected Only':'All Classes'}</button>
+  </div>` : '';
 
   // Category toggle — Weapons or Armor. Only the active category's slots get processed below,
   // which is the actual point: less looping/rendering work per refresh, not fewer Bungie requests.
@@ -3252,9 +3315,15 @@ function renderTrashMode() {
     });
     // Right: items NOT on selected character. When "All" is active, every item in the slot shows
     // regardless of mark; otherwise only items matching one of the selected mark filters.
+    // For armor, when Class Only is on, also restrict to the selected character's class.
+    const selectedClassType = profileInfo.characterClasses?.[trashModeCharId];
     const junkItems = allItems.filter(i=>{
       if (!trashModeShowAll && !trashModeFilters.has(getMark(i.itemInstanceId))) return false;
       if (i.characterId === trashModeCharId) return false; // already on this char, shows on left
+      if (slot.type==='armor' && trashModeClassOnly && selectedClassType!==undefined) {
+        const itemClass = getItemDef(i.itemHash)?.classType;
+        if (itemClass !== selectedClassType && itemClass !== 3) return false;
+      }
       return getEffectiveBucketHash(i) === slot.bucket;
     });
     // Sort the right-side list per the active sort preference
@@ -3262,6 +3331,8 @@ function renderTrashMode() {
       junkItems.sort((a,b)=> (instanceData[b.itemInstanceId]?.primaryStat?.value||0) - (instanceData[a.itemInstanceId]?.primaryStat?.value||0));
     } else if (trashModeSort === 'type' && slot.type === 'weapon') {
       junkItems.sort((a,b)=> (getItemDef(a.itemHash)?.itemTypeDisplayName||'').localeCompare(getItemDef(b.itemHash)?.itemTypeDisplayName||''));
+    } else if (trashModeSort === 'location') {
+      junkItems.sort((a,b)=> (a.loc||'').localeCompare(b.loc||'') || (getItemDef(a.itemHash)?.displayProperties?.name||'').localeCompare(getItemDef(b.itemHash)?.displayProperties?.name||''));
     } else {
       junkItems.sort((a,b)=> (getItemDef(a.itemHash)?.displayProperties?.name||'').localeCompare(getItemDef(b.itemHash)?.displayProperties?.name||''));
     }
@@ -3368,6 +3439,7 @@ function renderTrashMode() {
             <span style="font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Sort:</span>
             ${sortSelHtmlSmall}
           </div>
+          ${classOnlyHtml}
         </div>
       </div>
       <div style="margin-bottom:10px;"></div>
@@ -3391,6 +3463,13 @@ function selectTrashChar(cid) {
 
 function selectTrashCategory(cat) {
   trashModeCategory = cat;
+  saveWorkModePrefs();
+  renderTrashMode();
+}
+
+function toggleTrashClassOnly() {
+  trashModeClassOnly = !trashModeClassOnly;
+  saveWorkModePrefs();
   renderTrashMode();
 }
 
@@ -3403,16 +3482,19 @@ function toggleTrashFilter(filterKey) {
     if (trashModeFilters.has(filterKey)) trashModeFilters.delete(filterKey);
     else trashModeFilters.add(filterKey);
   }
+  saveWorkModePrefs();
   renderTrashMode();
 }
 
 function selectAllTrashFilters() {
   trashModeShowAll = true;
+  saveWorkModePrefs();
   renderTrashMode();
 }
 
 function selectTrashSort(sortKey) {
   trashModeSort = sortKey;
+  saveWorkModePrefs();
   renderTrashMode();
 }
 
