@@ -384,7 +384,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v89</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v90</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3261,8 +3261,17 @@ function renderTrashMode() {
       const isCraftedItem = isCrafted(item.itemInstanceId);
       const tier = gearTierOf(item.itemInstanceId);
       const border = mw ? '2px solid var(--exotic-col)' : '1px solid var(--border2)';
-      // Small mark-status badge, top-right — shape reflects whatever this item is actually marked as (independent of the active filter)
-      const markBadge = mark ? `<div style="position:absolute;top:1px;right:1px;z-index:2;line-height:0;filter:drop-shadow(0 0 1.5px rgba(0,0,0,0.95));">${markIconSvg(mark,15)}</div>` : '';
+      // Mark-status indicator: Junk gets the big centered circle-slash (as it was before); Locked and
+      // Infuse get the small solid corner badge. These are mutually exclusive since an item has one mark at most.
+      const markBadge = (mark === 'fav' || mark === 'infuse')
+        ? `<div style="position:absolute;top:1px;right:1px;z-index:2;line-height:0;filter:drop-shadow(0 0 1.5px rgba(0,0,0,0.95));">${markIconSvg(mark,15)}</div>`
+        : '';
+      const junkOverlay = mark === 'junk' ? `<div style="position:absolute;left:0;top:0;width:48px;height:48px;pointer-events:none;z-index:2;" title="Marked as junk">
+        <svg viewBox="0 0 48 48" width="48" height="48" style="position:absolute;left:0;top:0;filter:drop-shadow(0 0 1.5px rgba(0,0,0,0.95));">
+          <circle cx="24" cy="24" r="10" fill="none" stroke="#3fe06a" stroke-width="3" stroke-linecap="round"/>
+          <line x1="17" y1="31" x2="31" y2="17" stroke="#3fe06a" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>` : '';
       // Location only matters on the right side — left side is obviously the selected character
       const locBadge = side==='junk' ? `<div style="position:absolute;top:1px;left:1px;line-height:0;z-index:2;" title="${item.loc}${item.inPostmaster?' · Postmaster':''}">${locBadgeSvg(item)}</div>` : '';
       const dmg = damageIcon(def, 12);
@@ -3281,6 +3290,7 @@ function renderTrashMode() {
           ${tmLeftEdgeBadge(tier,isCraftedItem)}
           ${locBadge}
           ${markBadge}
+          ${junkOverlay}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;width:48px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:2px 4px;">
           <span style="display:flex;align-items:center;gap:2px;line-height:0;">${dmg}<span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;color:var(--text-muted);">${power}</span></span>
