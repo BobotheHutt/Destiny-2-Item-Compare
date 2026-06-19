@@ -384,7 +384,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v98</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v99</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3497,14 +3497,20 @@ function toggleTrashFilter(filterKey) {
     trashModeShowAll = false;
     trashModeFilters = new Set([filterKey]);
   } else {
-    if (trashModeFilters.has(filterKey)) trashModeFilters.delete(filterKey);
-    else trashModeFilters.add(filterKey);
+    if (trashModeFilters.has(filterKey)) {
+      // Don't allow deselecting the last remaining filter — at least one must always be active
+      if (trashModeFilters.size <= 1) return;
+      trashModeFilters.delete(filterKey);
+    } else {
+      trashModeFilters.add(filterKey);
+    }
   }
   saveWorkModePrefs();
   renderTrashMode();
 }
 
 function selectAllTrashFilters() {
+  if (trashModeShowAll) return; // already active — no-op
   trashModeShowAll = true;
   saveWorkModePrefs();
   renderTrashMode();
