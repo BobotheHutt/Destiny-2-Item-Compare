@@ -384,7 +384,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v87</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v88</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -685,25 +685,36 @@ function craftedIconInline(size) {
 // Work Mode mark-status badge — small, green, shape varies by mark type. 'fav'=lock, 'junk'=trash can, 'infuse'=bolt.
 function markIconSvg(mark, size) {
   const s = size||15;
-  const common = `width="${s}" height="${s}" fill="none" stroke="#3fe06a" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"`;
   if (mark === 'fav') {
-    return `<svg viewBox="0 0 24 24" ${common} title="Locked">
-      <rect x="5" y="11" width="14" height="9" rx="1.5"></rect>
-      <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+    return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" title="Locked">
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="#3fe06a" stroke-width="2.2" stroke-linecap="round"></path>
+      <rect x="5" y="11" width="14" height="9" rx="2" fill="#3fe06a"></rect>
     </svg>`;
   }
   if (mark === 'infuse') {
-    return `<svg viewBox="0 0 24 24" ${common} fill="#3fe06a" stroke="none" title="Infuse">
+    return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="#3fe06a" title="Infuse">
       <polygon points="13 2 4 14 11 14 10 22 20 9 13 9"></polygon>
     </svg>`;
   }
-  // junk
-  return `<svg viewBox="0 0 24 24" ${common} title="Marked as junk">
-    <polyline points="3 6 5 6 21 6"></polyline>
-    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-    <line x1="10" y1="11" x2="10" y2="17"></line>
-    <line x1="14" y1="11" x2="14" y2="17"></line>
+  // junk — solid trash-can silhouette
+  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="#3fe06a" title="Marked as junk">
+    <rect x="4" y="7" width="16" height="2" rx="1"></rect>
+    <rect x="9" y="3" width="6" height="3" rx="1"></rect>
+    <path d="M6 9.5h12l-1.2 11a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6 9.5z"></path>
   </svg>`;
+}
+// Work Mode-specific left-edge strip — combines gear tier pips (upper) and crafted indicator (pinned to
+// the bottom of the same strip), since Work Mode icons no longer have a separate bottom info bar.
+function tmLeftEdgeBadge(tier, crafted) {
+  if (!tier && !crafted) return '';
+  const pipsHtml = tier>0 ? `<div style="display:flex;flex-direction:column;gap:2px;">${
+    Array.from({length:Math.min(tier,5)}).map(()=>`<div style="width:5px;height:5px;background:#3fe0c8;border-radius:1px;"></div>`).join('')
+  }</div>` : '';
+  const craftedHtml = crafted ? craftedIconInline(12) : '';
+  const justify = (tier>0 && crafted) ? 'space-between' : tier>0 ? 'center' : 'flex-end';
+  return `<div style="position:absolute;left:2px;top:2px;bottom:2px;display:flex;flex-direction:column;align-items:flex-start;justify-content:${justify};z-index:2;filter:drop-shadow(0 0 1.5px rgba(0,0,0,0.95));" title="${tier>0?`Gear Tier ${tier}`:''}${tier>0&&crafted?' · ':''}${crafted?'Crafted':''}">
+    ${pipsHtml}${craftedHtml}
+  </div>`;
 }
 // Vertical gear-tier pip stack, docked to the left edge of an icon. sizeKey: 'lg' (48-72px icons) or 'sm' (32-36px icons).
 function tierPipsSvg(tier, sizeKey) {
@@ -3144,6 +3155,7 @@ function initThemePicker() {
 let trashModeCharId = null;
 let trashModeDragItem = null;
 let trashModeFilter = 'junk'; // which mark type the right-side list shows: 'fav' (Locked), 'junk', or 'infuse'
+let trashModeSort = 'default'; // 'default' (alphabetical), 'power', or 'type' (weapon archetype — armor falls back to default, see note below)
 let hoverTimer = null;
 let hoverTooltip = null;
 
@@ -3204,6 +3216,18 @@ function renderTrashMode() {
     return `<button onclick="selectTrashFilter('${f.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;background:${isActive?f.color:'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?f.color:'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${f.label}</button>`;
   }).join('');
 
+  // Sort selector — Default (alphabetical) and Power apply to both weapons and armor; Type applies to
+  // weapon archetype only (a reliable equivalent for armor "set" isn't available from the data we fetch)
+  const SORT_OPTIONS = [
+    {key:'default', label:'Default'},
+    {key:'power',   label:'Power'},
+    {key:'type',    label:'Type'},
+  ];
+  const sortSelHtml = SORT_OPTIONS.map(s=>{
+    const isActive = s.key===trashModeSort;
+    return `<button onclick="selectTrashSort('${s.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;background:${isActive?'var(--accent)':'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${s.label}</button>`;
+  }).join('');
+
   // Build slot rows
   const slotsHtml = SLOT_ORDER.map((slot, slotIdx)=>{
     // Left: character items for this slot
@@ -3217,25 +3241,31 @@ function renderTrashMode() {
       if (i.characterId === trashModeCharId) return false; // already on this char, shows on left
       return getEffectiveBucketHash(i) === slot.bucket;
     });
+    // Sort the right-side list per the active sort preference
+    if (trashModeSort === 'power') {
+      junkItems.sort((a,b)=> (instanceData[b.itemInstanceId]?.primaryStat?.value||0) - (instanceData[a.itemInstanceId]?.primaryStat?.value||0));
+    } else if (trashModeSort === 'type' && slot.type === 'weapon') {
+      junkItems.sort((a,b)=> (getItemDef(a.itemHash)?.itemTypeDisplayName||'').localeCompare(getItemDef(b.itemHash)?.itemTypeDisplayName||''));
+    } else {
+      junkItems.sort((a,b)=> (getItemDef(a.itemHash)?.displayProperties?.name||'').localeCompare(getItemDef(b.itemHash)?.displayProperties?.name||''));
+    }
 
-    // renderIcon — uniform 48px, masterwork=gold border, small mark-status badge, always-visible transfer btn
+    // renderIcon — uniform 48px, masterwork=gold border, small mark-status badge, combined info+transfer bar below
     const renderIcon = (item, side) => {
       const def = getItemDef(item.itemHash);
       const icon = def?.displayProperties?.hasIcon ? `https://www.bungie.net${def.displayProperties.icon}` : '';
       const inst = instanceData[item.itemInstanceId];
       const power = inst?.primaryStat?.value||'';
-      const isEquipped = item.equipped;
       const mw = isMasterworked(item.itemInstanceId);
       const mark = getMark(item.itemInstanceId);
       const isCraftedItem = isCrafted(item.itemInstanceId);
       const tier = gearTierOf(item.itemInstanceId);
       const border = mw ? '2px solid var(--exotic-col)' : '1px solid var(--border2)';
-      // Equipped badge only on the left (char) side — on the right side that corner is used for location instead
-      const equippedBadge = (isEquipped && side==='char') ? `<div style="position:absolute;top:1px;left:1px;font-family:'Barlow Condensed',sans-serif;font-size:7px;font-weight:700;background:var(--accent);color:#0a0c0f;padding:0 3px;line-height:1.4;z-index:2;">E</div>` : '';
       // Small mark-status badge, top-right — shape reflects whatever this item is actually marked as (independent of the active filter)
       const markBadge = mark ? `<div style="position:absolute;top:1px;right:1px;z-index:2;line-height:0;filter:drop-shadow(0 0 1.5px rgba(0,0,0,0.95));">${markIconSvg(mark,15)}</div>` : '';
       // Location only matters on the right side — left side is obviously the selected character
       const locBadge = side==='junk' ? `<div style="position:absolute;top:1px;left:1px;line-height:0;z-index:2;" title="${item.loc}${item.inPostmaster?' · Postmaster':''}">${locBadgeSvg(item)}</div>` : '';
+      const dmg = damageIcon(def, 12);
       return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;">
         <div class="tm-icon"
           data-iid="${item.itemInstanceId}"
@@ -3248,14 +3278,15 @@ function renderTrashMode() {
           ondragstart="onTMDragStart(event,'${item.itemInstanceId}','${side}','${slot.bucket}')"
           onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')">
           ${icon?`<img src="${icon}" style="width:100%;height:100%;object-fit:cover;display:block;" />`:''}
-          ${tierPipsSvg(tier,'lg')}
-          ${equippedBadge}
+          ${tmLeftEdgeBadge(tier,isCraftedItem)}
           ${locBadge}
           ${markBadge}
-          ${iconBottomBar(def, power, isCraftedItem, 'lg')}
         </div>
-        <button style="width:48px;background:var(--surface);border:1px solid var(--border2);color:var(--text-muted);font-size:13px;padding:2px 0;cursor:pointer;line-height:1;"
-          onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')">⇄</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;width:48px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:2px 4px;">
+          <span style="display:flex;align-items:center;gap:2px;line-height:0;">${dmg}<span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;color:var(--text-muted);">${power}</span></span>
+          <button style="background:none;border:none;color:var(--text-muted);font-size:11px;cursor:pointer;padding:0;line-height:1;"
+            onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')">⇄</button>
+        </div>
       </div>`;
     };
 
@@ -3271,7 +3302,6 @@ function renderTrashMode() {
 
     // Right side: items matching the active filter
     const junkIcons = junkItems.map(i=>renderIcon(i,'junk')).join('');
-    const activeFilterDef = MARK_FILTERS.find(f=>f.key===trashModeFilter);
 
     return `<div class="tm-slot-row" style="display:flex;gap:10px;margin-bottom:18px;align-items:flex-start;padding-top:16px;">
       <div class="tm-drop-zone" data-zone="char" data-slot="${slot.bucket}"
@@ -3281,10 +3311,8 @@ function renderTrashMode() {
         ${invGridHtml}
       </div>
       <div style="flex:1;display:flex;flex-direction:column;gap:0;">
-
         <div class="tm-drop-zone" data-zone="junk" data-slot="${slot.bucket}"
-          style="position:relative;min-height:60px;background:var(--surface);border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);padding:8px;display:flex;flex-wrap:wrap;gap:3px;transition:border-color .15s,background .15s;${slotIdx===0?'':'margin-top:0;'}">
-          <div style="position:absolute;top:-14px;left:4px;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:${activeFilterDef.color};opacity:0.85;">${activeFilterDef.label}</div>
+          style="position:relative;min-height:60px;background:var(--surface);border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);padding:8px;display:flex;flex-wrap:wrap;gap:3px;transition:border-color .15s,background .15s;">
           ${junkIcons||`<div style="color:var(--text-dim);font-size:11px;padding:4px;align-self:center;">None</div>`}
         </div>
       </div>
@@ -3304,8 +3332,17 @@ function renderTrashMode() {
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
-        <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);">Show:</span>
-        ${filterSelHtml}
+        <div style="min-width:180px;flex-shrink:0;"></div>
+        <div style="flex:1;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);">Show:</span>
+            ${filterSelHtml}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);">Sort:</span>
+            ${sortSelHtml}
+          </div>
+        </div>
       </div>
       <div>${slotsHtml}</div>
     </div>`;
@@ -3327,6 +3364,11 @@ function selectTrashChar(cid) {
 
 function selectTrashFilter(filterKey) {
   trashModeFilter = filterKey;
+  renderTrashMode();
+}
+
+function selectTrashSort(sortKey) {
+  trashModeSort = sortKey;
   renderTrashMode();
 }
 
