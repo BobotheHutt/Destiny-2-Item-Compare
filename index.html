@@ -384,7 +384,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v88</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v89</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3210,10 +3210,10 @@ function renderTrashMode() {
     return `<button onclick="selectTrashChar('${cid}')" style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;background:${isActive?'var(--accent)':'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${className}</button>`;
   }).join('');
 
-  // Mark-type filter selector — which list shows on the right
-  const filterSelHtml = MARK_FILTERS.map(f=>{
+  // Mark-type filter selector — which list shows on the right (small/compact, sits centered in the header row)
+  const filterSelHtmlSmall = MARK_FILTERS.map(f=>{
     const isActive = f.key===trashModeFilter;
-    return `<button onclick="selectTrashFilter('${f.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;background:${isActive?f.color:'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?f.color:'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${f.label}</button>`;
+    return `<button onclick="selectTrashFilter('${f.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;background:${isActive?f.color:'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?f.color:'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${f.label}</button>`;
   }).join('');
 
   // Sort selector — Default (alphabetical) and Power apply to both weapons and armor; Type applies to
@@ -3223,9 +3223,9 @@ function renderTrashMode() {
     {key:'power',   label:'Power'},
     {key:'type',    label:'Type'},
   ];
-  const sortSelHtml = SORT_OPTIONS.map(s=>{
+  const sortSelHtmlSmall = SORT_OPTIONS.map(s=>{
     const isActive = s.key===trashModeSort;
-    return `<button onclick="selectTrashSort('${s.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;background:${isActive?'var(--accent)':'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${s.label}</button>`;
+    return `<button onclick="selectTrashSort('${s.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;background:${isActive?'var(--accent)':'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${s.label}</button>`;
   }).join('');
 
   // Build slot rows
@@ -3321,29 +3321,27 @@ function renderTrashMode() {
 
   panel.innerHTML = `
     <div style="margin-top:16px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+      <div style="position:relative;display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
         ${charSelHtml}
-        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);">
-          <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);">Vault</span>
-          <div style="width:120px;height:5px;background:var(--surface2);border-radius:3px;">
-            <div style="height:5px;width:${vaultPct}%;background:${vaultColor};border-radius:3px;transition:width .3s;"></div>
-          </div>
-          <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;color:${vaultColor};">${vaultCount} / ${vaultMax}${nearFull?' ⚠':''}</span>
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:6px;">
+          <span style="font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Show:</span>
+          ${filterSelHtmlSmall}
         </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
-        <div style="min-width:180px;flex-shrink:0;"></div>
-        <div style="flex:1;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);">Show:</span>
-            ${filterSelHtml}
+        <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+          <div style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);">
+            <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);">Vault</span>
+            <div style="width:120px;height:5px;background:var(--surface2);border-radius:3px;">
+              <div style="height:5px;width:${vaultPct}%;background:${vaultColor};border-radius:3px;transition:width .3s;"></div>
+            </div>
+            <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;color:${vaultColor};">${vaultCount} / ${vaultMax}${nearFull?' ⚠':''}</span>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);">Sort:</span>
-            ${sortSelHtml}
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Sort:</span>
+            ${sortSelHtmlSmall}
           </div>
         </div>
       </div>
+      <div style="margin-bottom:10px;"></div>
       <div>${slotsHtml}</div>
     </div>`;
 
