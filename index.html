@@ -384,7 +384,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v99</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v101</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -549,7 +549,8 @@ function getLockBtnTitle(instanceId) {
 async function syncLocksToGame() {
   const btn = document.getElementById('syncLocksBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
-  const headers = {'X-API-Key': BUNGIE_API_KEY, 'Authorization': `Bearer ${oauthToken}`, 'Content-Type': 'application/json'};
+  const headers = await ensureAuthHeaders();
+  if (!headers) { if (btn) { btn.disabled = false; btn.textContent = 'Sync to Game'; } return; }
   const {membershipType} = profileInfo;
 
   // Find all items that need syncing
@@ -889,6 +890,21 @@ function isOAuthValid() {
   return oauthToken && Date.now() < oauthExpiry;
 }
 
+// Every function that calls a Bungie endpoint requiring auth should await this first,
+// instead of building headers from oauthToken directly. Handles the case where the access
+// token went stale while the tab sat idle — silently refreshes using the longer-lived
+// refresh token (same as DIM does) rather than failing and looking like a forced logout.
+async function ensureAuthHeaders() {
+  if (!isOAuthValid()) {
+    const refreshed = await refreshOAuthToken();
+    if (!refreshed) {
+      showError('Your session expired — please log in with Bungie again.');
+      return null;
+    }
+  }
+  return {'X-API-Key': BUNGIE_API_KEY, 'Authorization': `Bearer ${oauthToken}`, 'Content-Type': 'application/json'};
+}
+
 function oauthLogout() {
   oauthToken = null; oauthExpiry = 0;
   localStorage.removeItem('d2oauth_token');
@@ -1016,15 +1032,10 @@ function exitPreview() {
 }
 
 async function searchPlayer() {
-  const apiKey = BUNGIE_API_KEY;
   clearError();
   document.getElementById('app').style.display='none';
-  if (!isOAuthValid()) {
-    // Access token expired — try the still-valid refresh token before giving up
-    const refreshed = await refreshOAuthToken();
-    if (!refreshed) { showError('Please log in with Bungie first.'); return; }
-  }
-  const headers={'X-API-Key':apiKey,'Content-Type':'application/json','Authorization':`Bearer ${oauthToken}`};
+  const headers = await ensureAuthHeaders();
+  if (!headers) return;
 
   try {
     setLoading('Loading your profile…');
@@ -1050,7 +1061,7 @@ async function searchPlayer() {
 
     if (Object.keys(manifestItems).length===0) {
       setLoading('Loading manifest (first time only)…');
-      const mr = await fetch('https://www.bungie.net/Platform/Destiny2/Manifest/',{headers:{'X-API-Key':apiKey}});
+      const mr = await fetch('https://www.bungie.net/Platform/Destiny2/Manifest/',{headers:{'X-API-Key':BUNGIE_API_KEY}});
       const md = await mr.json();
       const base = md.Response.jsonWorldComponentContentPaths.en;
       setLoading('Downloading item definitions…');
@@ -3547,7 +3558,8 @@ async function transferItem(iid, side, slotBucket) {
   const wasLocked = !!(item.state & 1);
 
   const {membershipType} = profileInfo;
-  const headers = {'X-API-Key': BUNGIE_API_KEY, 'Authorization': `Bearer ${oauthToken}`, 'Content-Type': 'application/json'};
+  const headers = await ensureAuthHeaders();
+  if (!headers) return;
 
   // Postmaster items can't be vaulted or transferred directly — Bungie requires pulling
   // them into their owning character's regular inventory first via a separate endpoint.
