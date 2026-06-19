@@ -384,7 +384,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v91</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v93</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3277,7 +3277,7 @@ function renderTrashMode() {
       // Location only matters on the right side — top-right now, clear of the tier pips on the left edge
       const locBadge = side==='junk' ? `<div style="position:absolute;top:1px;right:1px;line-height:0;z-index:2;">${locBadgeSvg(item)}</div>` : '';
       const dmg = damageIcon(def, 12);
-      return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;">
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:0;flex-shrink:0;">
         <div class="tm-icon"
           data-iid="${item.itemInstanceId}"
           data-side="${side}"
@@ -3294,10 +3294,10 @@ function renderTrashMode() {
           ${markBadge}
           ${junkOverlay}
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;width:48px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:2px 4px;">
-          <span style="display:flex;align-items:center;gap:2px;line-height:0;">${dmg}<span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;color:var(--text-muted);">${power}</span></span>
-          <button style="background:none;border:none;color:var(--text-muted);font-size:11px;cursor:pointer;padding:0;line-height:1;"
-            onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')">⇄</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;width:48px;background:var(--surface);border:1px solid var(--border2);border-top:none;padding:2px 4px;cursor:pointer;"
+          onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')">
+          <span style="display:flex;align-items:center;gap:2px;line-height:0;pointer-events:none;">${dmg}<span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;color:var(--text-muted);">${power}</span></span>
+          <span style="color:var(--text-muted);font-size:11px;line-height:1;pointer-events:none;">⇄</span>
         </div>
       </div>`;
     };
