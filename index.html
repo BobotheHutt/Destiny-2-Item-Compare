@@ -384,7 +384,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v94</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v96</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3157,6 +3157,8 @@ function initThemePicker() {
 let trashModeCharId = null;
 let trashModeDragItem = null;
 let trashModeFilters = new Set(['junk']); // which mark type(s) the right-side list shows — multi-select, any combo of 'fav'/'junk'/'infuse'
+let trashModeCategory = 'weapon'; // 'weapon' or 'armor' — only that category's slots are processed/rendered
+let trashModeShowAll = false; // 'All' button — bypasses mark filtering entirely, shows every item in the slot regardless of mark
 let trashModeSort = 'default'; // 'default' (alphabetical), 'power', or 'type' (weapon archetype — armor falls back to default, see note below)
 let hoverTimer = null;
 let hoverTooltip = null;
@@ -3212,11 +3214,11 @@ function renderTrashMode() {
     return `<button onclick="selectTrashChar('${cid}')" style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;background:${isActive?'var(--accent)':'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${className}</button>`;
   }).join('');
 
-  // Mark-type filter selector — multi-select, plus an "All" shortcut (small/compact, sits centered in the header row)
-  const allActive = MARK_FILTERS.every(f=>trashModeFilters.has(f.key));
-  const allBtnHtml = `<button onclick="selectAllTrashFilters()" style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;background:${allActive?'var(--accent)':'var(--surface)'};color:${allActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${allActive?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">All</button>`;
+  // Mark-type filter selector — "All" shows every item regardless of mark; Locked/Junk/Infuse are
+  // a multi-select that only applies when "All" is off.
+  const allBtnHtml = `<button onclick="selectAllTrashFilters()" style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;background:${trashModeShowAll?'var(--accent)':'var(--surface)'};color:${trashModeShowAll?'#0a0c0f':'var(--text-muted)'};border:1px solid ${trashModeShowAll?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">All</button>`;
   const filterSelHtmlSmall = allBtnHtml + MARK_FILTERS.map(f=>{
-    const isActive = trashModeFilters.has(f.key);
+    const isActive = !trashModeShowAll && trashModeFilters.has(f.key);
     return `<button onclick="toggleTrashFilter('${f.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;background:${isActive?f.color:'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?f.color:'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${f.label}</button>`;
   }).join('');
 
@@ -3232,16 +3234,26 @@ function renderTrashMode() {
     return `<button onclick="selectTrashSort('${s.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;background:${isActive?'var(--accent)':'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${s.label}</button>`;
   }).join('');
 
-  // Build slot rows
-  const slotsHtml = SLOT_ORDER.map((slot, slotIdx)=>{
+  // Category toggle — Weapons or Armor. Only the active category's slots get processed below,
+  // which is the actual point: less looping/rendering work per refresh, not fewer Bungie requests.
+  const CATEGORIES = [{key:'weapon', label:'Weapons'}, {key:'armor', label:'Armor'}];
+  const categorySelHtml = CATEGORIES.map(c=>{
+    const isActive = c.key===trashModeCategory;
+    return `<button onclick="selectTrashCategory('${c.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 12px;background:${isActive?'var(--accent)':'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${c.label}</button>`;
+  }).join('');
+
+  // Build slot rows — only the active category's slots are processed at all
+  const activeSlots = SLOT_ORDER.filter(s=>s.type===trashModeCategory);
+  const slotsHtml = activeSlots.map((slot, slotIdx)=>{
     // Left: character items for this slot
     const charItems = allItems.filter(i=>{
       if (i.characterId !== trashModeCharId) return false;
       return getEffectiveBucketHash(i) === slot.bucket;
     });
-    // Right: items matching the active filter, NOT on selected character (those show on left instead)
+    // Right: items NOT on selected character. When "All" is active, every item in the slot shows
+    // regardless of mark; otherwise only items matching one of the selected mark filters.
     const junkItems = allItems.filter(i=>{
-      if (!trashModeFilters.has(getMark(i.itemInstanceId))) return false;
+      if (!trashModeShowAll && !trashModeFilters.has(getMark(i.itemInstanceId))) return false;
       if (i.characterId === trashModeCharId) return false; // already on this char, shows on left
       return getEffectiveBucketHash(i) === slot.bucket;
     });
@@ -3335,6 +3347,9 @@ function renderTrashMode() {
 
   panel.innerHTML = `
     <div style="margin-top:16px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        ${categorySelHtml}
+      </div>
       <div style="position:relative;display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
         ${charSelHtml}
         <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:6px;">
@@ -3374,14 +3389,25 @@ function selectTrashChar(cid) {
   renderTrashMode();
 }
 
+function selectTrashCategory(cat) {
+  trashModeCategory = cat;
+  renderTrashMode();
+}
+
 function toggleTrashFilter(filterKey) {
-  if (trashModeFilters.has(filterKey)) trashModeFilters.delete(filterKey);
-  else trashModeFilters.add(filterKey);
+  if (trashModeShowAll) {
+    // Coming out of "All" mode — start a fresh selection with just the clicked filter
+    trashModeShowAll = false;
+    trashModeFilters = new Set([filterKey]);
+  } else {
+    if (trashModeFilters.has(filterKey)) trashModeFilters.delete(filterKey);
+    else trashModeFilters.add(filterKey);
+  }
   renderTrashMode();
 }
 
 function selectAllTrashFilters() {
-  trashModeFilters = new Set(MARK_FILTERS.map(f=>f.key));
+  trashModeShowAll = true;
   renderTrashMode();
 }
 
