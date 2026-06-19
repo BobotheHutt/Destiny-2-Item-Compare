@@ -384,7 +384,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v97</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v98</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3397,8 +3397,26 @@ function renderTrashMode() {
       Array.from({length:9}).map((_,idx)=> invItems[idx] ? renderIcon(invItems[idx],'char') : `<div style="width:48px;height:48px;background:var(--surface2);border:1px dashed var(--border);opacity:0.2;"></div>`).join('')
     }</div>`;
 
-    // Right side: items matching the active filter
-    const junkIcons = junkItems.map(i=>renderIcon(i,'junk')).join('');
+    // Right side: items matching the active filter. When sorted by a grouping field (Type/Location),
+    // insert a labeled divider wherever the group changes, so boundaries are easy to spot.
+    const groupKeyFn = trashModeSort==='type' ? (i=>getItemDef(i.itemHash)?.itemTypeDisplayName||'Unknown')
+      : trashModeSort==='location' ? (i=>i.loc||'Unknown')
+      : null;
+    let junkIcons = '';
+    let lastGroupKey = undefined;
+    junkItems.forEach(i=>{
+      if (groupKeyFn) {
+        const gk = groupKeyFn(i);
+        if (gk !== lastGroupKey) {
+          junkIcons += `<div style="flex-basis:100%;display:flex;align-items:center;gap:6px;margin:${lastGroupKey===undefined?'0':'4px'} 0 1px 0;">
+            <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);white-space:nowrap;">${gk}</span>
+            <span style="flex:1;height:1px;background:var(--border2);"></span>
+          </div>`;
+          lastGroupKey = gk;
+        }
+      }
+      junkIcons += renderIcon(i,'junk');
+    });
 
     return `<div class="tm-slot-row" style="display:flex;gap:10px;margin-bottom:18px;align-items:flex-start;padding-top:16px;">
       <div class="tm-drop-zone" data-zone="char" data-slot="${slot.bucket}"
