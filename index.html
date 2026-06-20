@@ -385,7 +385,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v104</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v105</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -761,15 +761,18 @@ function iconBottomBar(def, power, crafted, sizeKey) {
 function locBadgeSvg(item) {
   if (item.loc === 'Vault') {
     return `<svg width="14" height="11" viewBox="0 0 14 11" title="Vault">
-      <rect width="14" height="11" rx="2" fill="#6b7785"/>
-      <text x="7" y="8.4" text-anchor="middle" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="8" fill="#0a0c0f">V</text>
+      <rect width="14" height="11" rx="2" fill="#0a0c0f" stroke="#3a3f4a" stroke-width="1"/>
+      <text x="7" y="8.4" text-anchor="middle" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="8" fill="#fff">V</text>
     </svg>`;
   }
   const classColorVar = {Titan:'var(--titan)', Hunter:'var(--hunter)', Warlock:'var(--warlock)'}[item.loc] || '#6b7785';
   const letter = item.inPostmaster ? 'P' : (item.loc?.[0] || '?');
   const title = item.inPostmaster ? `${item.loc} · Postmaster` : (item.loc||'');
+  // Postmaster items get a white outline so they visually stand out from regular character-located items
+  const strokeAttr = item.inPostmaster ? `stroke="#fff" stroke-width="1.2"` : '';
+  const rectAttrs = item.inPostmaster ? `x="0.6" y="0.6" width="12.8" height="9.8"` : `width="14" height="11"`;
   return `<svg width="14" height="11" viewBox="0 0 14 11" title="${title}">
-    <rect width="14" height="11" rx="2" fill="${classColorVar}"/>
+    <rect ${rectAttrs} rx="2" fill="${classColorVar}" ${strokeAttr}/>
     <text x="7" y="8.4" text-anchor="middle" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="8" fill="#0a0c0f">${letter}</text>
   </svg>`;
 }
@@ -3258,6 +3261,12 @@ const MARK_FILTERS = [
   {key:'favorite',label:'Favorite', color:'var(--favorite)'},
 ];
 
+// Location grouping key for Work Mode's Location sort — Postmaster items from ANY character
+// group together as their own section, rather than being nested inside that character's location.
+function locationGroupKey(item) {
+  return item.inPostmaster ? 'Postmaster' : (item.loc || 'Unknown');
+}
+
 const SLOT_ORDER = [
   {name:'Kinetic',    bucket:1498876634, type:'weapon'},
   {name:'Energy',     bucket:2465295065, type:'weapon'},
@@ -3368,7 +3377,15 @@ function renderTrashMode() {
     } else if (trashModeSort === 'type' && slot.type === 'weapon') {
       junkItems.sort((a,b)=> (getItemDef(a.itemHash)?.itemTypeDisplayName||'').localeCompare(getItemDef(b.itemHash)?.itemTypeDisplayName||''));
     } else if (trashModeSort === 'location') {
-      junkItems.sort((a,b)=> (a.loc||'').localeCompare(b.loc||'') || (getItemDef(a.itemHash)?.displayProperties?.name||'').localeCompare(getItemDef(b.itemHash)?.displayProperties?.name||''));
+      // Postmaster items group together from ALL characters as their own section (always first),
+      // separate from regular character/vault locations — not nested inside each character's group.
+      junkItems.sort((a,b)=> {
+        const ka = locationGroupKey(a), kb = locationGroupKey(b);
+        const ra = ka==='Postmaster' ? -1 : 0, rb = kb==='Postmaster' ? -1 : 0;
+        if (ra !== rb) return ra - rb;
+        if (ka !== kb) return ka.localeCompare(kb);
+        return (getItemDef(a.itemHash)?.displayProperties?.name||'').localeCompare(getItemDef(b.itemHash)?.displayProperties?.name||'');
+      });
     } else {
       junkItems.sort((a,b)=> (getItemDef(a.itemHash)?.displayProperties?.name||'').localeCompare(getItemDef(b.itemHash)?.displayProperties?.name||''));
     }
@@ -3441,7 +3458,7 @@ function renderTrashMode() {
     // Right side: items matching the active filter. When sorted by a grouping field (Type/Location),
     // insert a labeled divider wherever the group changes, so boundaries are easy to spot.
     const groupKeyFn = trashModeSort==='type' ? (i=>getItemDef(i.itemHash)?.itemTypeDisplayName||'Unknown')
-      : trashModeSort==='location' ? (i=>i.loc||'Unknown')
+      : trashModeSort==='location' ? locationGroupKey
       : null;
     let junkIcons = '';
     let lastGroupKey = undefined;
