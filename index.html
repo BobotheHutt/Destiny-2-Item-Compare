@@ -28,7 +28,8 @@
   --rare-col: #5076a3;
   --fav: #4caf7d;
   --junk: #e05555;
-  --infuse: #4a9fd4;
+  --infuse: #e0c23f;
+  --favorite: #4a9fd4;
   --theme-glow: rgba(200,168,75,0.35);
   --theme-line: rgba(200,168,75,0.16);
   --radius: 8px;
@@ -254,7 +255,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
 .mark-btn.fav.active { background:var(--fav); color:#0a0c0f; }
 .mark-btn.fav.pending { background:rgba(200,168,75,0.25); color:var(--accent); border-color:var(--accent); } /* amber = pending sync */
 .mark-btn.junk.active { background:var(--junk); color:#fff; }
-.mark-btn.infuse.active { background:var(--infuse); color:#fff; }
+.mark-btn.infuse.active { background:var(--infuse); color:#0a0c0f; }
 .mark-btn.clear-btn { color:var(--text-dim); border-color:var(--border2); }
 .mark-btn.clear-btn:hover { color:var(--text); }
 .mark-btn.pending-select { outline:2px solid var(--accent); outline-offset:1px; }
@@ -384,7 +385,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v102</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v103</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -514,8 +515,6 @@ function applyClassTheme(classType) {
   root.style.setProperty('--accent2',     theme.accent2);
   root.style.setProperty('--theme-glow',  theme.glow);
   root.style.setProperty('--theme-line',  theme.line);
-  // Also update infuse color to match class
-  if (classType === 1) root.style.setProperty('--infuse', theme.accent);
 }
 
 function saveMark(instanceId, mark) {
@@ -533,9 +532,10 @@ function toggleFavorite(instanceId) {
   else favorites[instanceId] = true;
   localStorage.setItem('d2favorites', JSON.stringify(favorites));
 }
-function favoriteIconInline(size) {
+function favoriteIconInline(size, color) {
   const s = size||15;
-  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="#3fe06a" title="Favorite">
+  const c = color||'#3fe06a'; // defaults to Work Mode's green badge color
+  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="${c}" title="Favorite">
     <path d="M12 21s-7.5-4.9-10.2-9.3C.2 8.8 1.4 5 5 4c2.2-.6 4.3.4 5.6 2.2L12 8l1.4-1.8C14.7 4.4 16.8 3.4 19 4c3.6 1 4.8 4.8 3.2 7.7C19.5 16.1 12 21 12 21z"/>
   </svg>`;
 }
@@ -700,21 +700,22 @@ function craftedIconInline(size) {
   </svg>`;
 }
 // Work Mode mark-status badge — small, green, shape varies by mark type. 'fav'=lock, 'junk'=trash can, 'infuse'=bolt.
-function markIconSvg(mark, size) {
+function markIconSvg(mark, size, color) {
   const s = size||15;
+  const c = color||'#3fe06a'; // defaults to Work Mode's green badge color
   if (mark === 'fav') {
     return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" title="Locked">
-      <path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="#3fe06a" stroke-width="2.2" stroke-linecap="round"></path>
-      <rect x="5" y="11" width="14" height="9" rx="2" fill="#3fe06a"></rect>
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round"></path>
+      <rect x="5" y="11" width="14" height="9" rx="2" fill="${c}"></rect>
     </svg>`;
   }
   if (mark === 'infuse') {
-    return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="#3fe06a" title="Infuse">
+    return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="${c}" title="Infuse">
       <polygon points="13 2 4 14 11 14 10 22 20 9 13 9"></polygon>
     </svg>`;
   }
   // junk — solid trash-can silhouette
-  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="#3fe06a" title="Marked as junk">
+  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="${c}" title="Marked as junk">
     <rect x="4" y="7" width="16" height="2" rx="1"></rect>
     <rect x="9" y="3" width="6" height="3" rx="1"></rect>
     <path d="M6 9.5h12l-1.2 11a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6 9.5z"></path>
@@ -2034,10 +2035,10 @@ function renderGodRoll() {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:${scoreColor};">${anySelected?pct+'%':''}</div>
           <div class="mark-row" data-iid="${iid}" data-type="weapon" style="display:flex;gap:3px;">
-            <button class="fav-heart-btn" onclick="toggleFavorite('${iid}');renderGodRoll();" style="padding:3px 7px;font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius-sm);background:${isFavorite(iid)?'#3fe06a':'var(--surface)'};color:${isFavorite(iid)?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isFavorite(iid)?'#3fe06a':'var(--border2)'};">${isFavorite(iid)?'♥':'♡'} Fav</button>
-            <button class="mark-btn fav ${getLockBtnClass(iid)}" data-mark="fav" style="padding:3px 7px;font-size:10px;" title="${getLockBtnTitle(iid)}">🔒 Lock</button>
-            <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:3px 7px;font-size:10px;">Junk</button>
-            <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:3px 7px;font-size:10px;">Infuse</button>
+            <button class="fav-heart-btn" onclick="toggleFavorite('${iid}');renderGodRoll();" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:5px 7px;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius-sm);background:${isFavorite(iid)?'var(--favorite)':'var(--surface)'};color:${isFavorite(iid)?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isFavorite(iid)?'var(--favorite)':'var(--border2)'};line-height:0;">${favoriteIconInline(14, isFavorite(iid)?'#0a0c0f':'var(--favorite)')}<span style="line-height:1;margin-top:1px;">Fav</span></button>
+            <button class="mark-btn fav ${getLockBtnClass(iid)}" data-mark="fav" style="padding:5px 7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;" title="${getLockBtnTitle(iid)}"><span>🔒</span><span>Lock</span></button>
+            <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:5px 7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;line-height:0;">${markIconSvg('junk',14,mark==='junk'?'#fff':'var(--junk)')}<span style="line-height:1;margin-top:1px;">Junk</span></button>
+            <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:5px 7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;line-height:0;">${markIconSvg('infuse',14,mark==='infuse'?'#0a0c0f':'var(--infuse)')}<span style="line-height:1;margin-top:1px;">Infuse</span></button>
             <button class="mark-btn clear-btn" data-mark="clear" style="padding:3px 7px;font-size:10px;">✕</button>
           </div>
         </div>
@@ -2234,10 +2235,10 @@ function renderArmorGodRoll() {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
           ${scoreDisplay}
           <div class="mark-row" data-iid="${iid}" data-type="armor" style="display:flex;gap:3px;">
-            <button class="fav-heart-btn" onclick="toggleFavorite('${iid}');renderArmorGodRoll();" style="padding:3px 7px;font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius-sm);background:${isFavorite(iid)?'#3fe06a':'var(--surface)'};color:${isFavorite(iid)?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isFavorite(iid)?'#3fe06a':'var(--border2)'};">${isFavorite(iid)?'♥':'♡'} Fav</button>
-            <button class="mark-btn fav ${getLockBtnClass(iid)}" data-mark="fav" style="padding:3px 7px;font-size:10px;" title="${getLockBtnTitle(iid)}">🔒 Lock</button>
-            <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:3px 7px;font-size:10px;">Junk</button>
-            <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:3px 7px;font-size:10px;">Infuse</button>
+            <button class="fav-heart-btn" onclick="toggleFavorite('${iid}');renderArmorGodRoll();" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:5px 7px;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius-sm);background:${isFavorite(iid)?'var(--favorite)':'var(--surface)'};color:${isFavorite(iid)?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isFavorite(iid)?'var(--favorite)':'var(--border2)'};line-height:0;">${favoriteIconInline(14, isFavorite(iid)?'#0a0c0f':'var(--favorite)')}<span style="line-height:1;margin-top:1px;">Fav</span></button>
+            <button class="mark-btn fav ${getLockBtnClass(iid)}" data-mark="fav" style="padding:5px 7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;" title="${getLockBtnTitle(iid)}"><span>🔒</span><span>Lock</span></button>
+            <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:5px 7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;line-height:0;">${markIconSvg('junk',14,mark==='junk'?'#fff':'var(--junk)')}<span style="line-height:1;margin-top:1px;">Junk</span></button>
+            <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:5px 7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;line-height:0;">${markIconSvg('infuse',14,mark==='infuse'?'#0a0c0f':'var(--infuse)')}<span style="line-height:1;margin-top:1px;">Infuse</span></button>
             <button class="mark-btn clear-btn" data-mark="clear" style="padding:3px 7px;font-size:10px;">✕</button>
           </div>
         </div>
@@ -3254,7 +3255,7 @@ const MARK_FILTERS = [
   {key:'fav',     label:'Locked',   color:'var(--fav)'},
   {key:'junk',    label:'Junk',     color:'var(--junk)'},
   {key:'infuse',  label:'Infuse',   color:'var(--infuse)'},
-  {key:'favorite',label:'Favorite', color:'#3fe06a'},
+  {key:'favorite',label:'Favorite', color:'var(--favorite)'},
 ];
 
 const SLOT_ORDER = [
