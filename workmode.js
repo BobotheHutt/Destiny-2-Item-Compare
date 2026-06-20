@@ -25,10 +25,10 @@ let hoverTimer = null;
 let hoverTooltip = null;
 
 const MARK_FILTERS = [
+  {key:'favorite',label:'Favorite', color:'var(--favorite)'},
   {key:'fav',     label:'Locked',   color:'var(--fav)'},
   {key:'junk',    label:'Junk',     color:'var(--junk)'},
   {key:'infuse',  label:'Infuse',   color:'var(--infuse)'},
-  {key:'favorite',label:'Favorite', color:'var(--favorite)'},
 ];
 
 // Location grouping key for Work Mode's Location sort — Postmaster items from ANY character
@@ -263,12 +263,17 @@ function renderTrashMode() {
       junkIcons += renderIcon(i,'junk');
     });
 
-    return `<div class="tm-slot-row" style="display:flex;gap:10px;margin-bottom:18px;align-items:flex-start;padding-top:16px;">
+    return `<div class="tm-slot-row" style="display:flex;gap:10px;margin-bottom:18px;align-items:flex-start;">
       <div class="tm-drop-zone" data-zone="char" data-slot="${slot.bucket}"
-        style="position:relative;background:var(--surface);border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);padding:8px;display:flex;gap:8px;align-items:flex-start;transition:border-color .15s,background .15s;min-width:180px;">
-        <div style="position:absolute;top:-14px;left:4px;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">${slot.name}</div>
-        ${equippedHtml}
-        ${invGridHtml}
+        style="position:relative;background:var(--surface);border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);padding:8px;display:flex;flex-direction:column;gap:6px;transition:border-color .15s,background .15s;min-width:180px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);white-space:nowrap;">${slot.name}</span>
+          <span style="flex:1;height:1px;background:var(--border2);"></span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-start;">
+          ${equippedHtml}
+          ${invGridHtml}
+        </div>
       </div>
       <div style="flex:1;display:flex;flex-direction:column;gap:0;">
         <div class="tm-drop-zone" data-zone="junk" data-slot="${slot.bucket}"
