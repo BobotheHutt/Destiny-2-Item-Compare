@@ -382,7 +382,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v119</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v120</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -642,9 +642,10 @@ async function syncLocksToGame() {
     btn.textContent = failed ? `Synced ${success}, ${failed} failed` : `✓ Synced ${success} items`;
     setTimeout(()=>{ if(btn) btn.textContent='Sync to Game'; }, 3000);
   }
+  const reopenIid = interactiveTooltipIid, reopenPos = interactiveTooltipPos; // capture before the renders below wipe them
   renderMarkTab('fav');
   if (document.getElementById('panel-trashmode')?.classList.contains('active')) renderTrashMode();
-  refreshInteractiveTooltipIfOpen();
+  if (reopenIid && reopenPos) showItemTooltip({clientX:reopenPos.x, clientY:reopenPos.y}, reopenIid, true);
 }
 
 function getItemDef(hash) { return manifestItems[hash] || manifestItems[hash>>>0] || null; }
@@ -3777,26 +3778,24 @@ function showInteractiveTooltip(event, iid) {
   clearHoverTimer();
   showItemTooltip(event, iid, true);
 }
-function refreshInteractiveTooltipIfOpen() {
-  if (!interactiveTooltipIid || !interactiveTooltipPos) return;
-  showItemTooltip({clientX:interactiveTooltipPos.x, clientY:interactiveTooltipPos.y}, interactiveTooltipIid, true);
-}
 // Robust guard against the outside-click-to-dismiss handler closing the popup on its own mark
 // button clicks. event.stopPropagation() alone isn't reliable here since the button itself gets
 // replaced (the popup refreshes) as a side effect of the very click that's still bubbling.
 let suppressNextDocClick = false;
 function toggleMarkFromTooltip(iid, mark) {
   suppressNextDocClick = true;
+  const pos = interactiveTooltipPos; // capture before renderTrashMode's defensive clearHoverTimer wipes it
   const current = getMark(iid);
   saveMark(iid, current===mark ? null : mark);
-  refreshInteractiveTooltipIfOpen();
   if (document.getElementById('panel-trashmode')?.classList.contains('active')) renderTrashMode();
+  if (pos) showItemTooltip({clientX:pos.x, clientY:pos.y}, iid, true);
 }
 function toggleFavoriteFromTooltip(iid) {
   suppressNextDocClick = true;
+  const pos = interactiveTooltipPos;
   toggleFavorite(iid);
-  refreshInteractiveTooltipIfOpen();
   if (document.getElementById('panel-trashmode')?.classList.contains('active')) renderTrashMode();
+  if (pos) showItemTooltip({clientX:pos.x, clientY:pos.y}, iid, true);
 }
 function showItemTooltip(event, iid, interactive) {
   const item = allItems.find(i=>i.itemInstanceId===iid);
