@@ -385,7 +385,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v108</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v109</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -477,6 +477,7 @@ let manifestItems = {};
 let manifestStats = {};
 let manifestPerks = {};
 let manifestPlugSets = {};
+let manifestItemSets = {}; // DestinyEquipableItemSetDefinition — armor set bonus data
 let allItems      = []; // all weapon+armor items across chars+vault
 let profileLoaded = false;
 let isPreviewMode = false;
@@ -985,15 +986,19 @@ async function previewPlayer() {
       const md = await mr.json();
       const base = md.Response.jsonWorldComponentContentPaths.en;
       setLoading('Downloading definitions…');
-      const [items,stats,perks,plugSets,damageTypes] = await Promise.all([
+      const [items,stats,perks,plugSets,damageTypes,itemSets] = await Promise.all([
         fetch('https://www.bungie.net'+base.DestinyInventoryItemDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyStatDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinySandboxPerkDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyPlugSetDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyDamageTypeDefinition).then(r=>r.json()),
+        fetch('https://www.bungie.net'+base.DestinyEquipableItemSetDefinition).then(r=>r.json()),
       ]);
-      manifestItems=items; manifestStats=stats; manifestPerks=perks; manifestPlugSets=plugSets;
+      manifestItems=items; manifestStats=stats; manifestPerks=perks; manifestPlugSets=plugSets; manifestItemSets=itemSets;
       Object.values(damageTypes).forEach(dt=>{ if(dt.enumValue&&dt.displayProperties?.hasIcon) manifestDamageTypes[dt.enumValue]=dt.displayProperties.icon; });
+      // One-time diagnostic — confirms the real shape of the armor-set table before we build the lookup on top of it
+      const firstSet = Object.values(manifestItemSets)[0];
+      console.log('[armor-set-debug] DestinyEquipableItemSetDefinition: table size', Object.keys(manifestItemSets).length, '— sample entry:', firstSet);
     }
 
     // Preview uses public components only (no OAuth)
@@ -1085,14 +1090,18 @@ async function searchPlayer() {
       const md = await mr.json();
       const base = md.Response.jsonWorldComponentContentPaths.en;
       setLoading('Downloading item definitions…');
-      const [items,stats,perks,plugSets,damageTypes] = await Promise.all([
+      const [items,stats,perks,plugSets,damageTypes,itemSets] = await Promise.all([
         fetch('https://www.bungie.net'+base.DestinyInventoryItemDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyStatDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinySandboxPerkDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyPlugSetDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyDamageTypeDefinition).then(r=>r.json()),
+        fetch('https://www.bungie.net'+base.DestinyEquipableItemSetDefinition).then(r=>r.json()),
       ]);
-      manifestItems = items; manifestStats = stats; manifestPerks = perks; manifestPlugSets = plugSets;
+      manifestItems = items; manifestStats = stats; manifestPerks = perks; manifestPlugSets = plugSets; manifestItemSets = itemSets;
+      // One-time diagnostic — confirms the real shape of the armor-set table before we build the lookup on top of it
+      const firstSet = Object.values(manifestItemSets)[0];
+      console.log('[armor-set-debug] DestinyEquipableItemSetDefinition: table size', Object.keys(manifestItemSets).length, '— sample entry:', firstSet);
       // Build damage type icon map from manifest
       Object.values(damageTypes).forEach(dt => {
         const enumVal = dt.enumValue;
