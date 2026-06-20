@@ -385,7 +385,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v106</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v107</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3712,6 +3712,9 @@ function showItemTooltip(event, iid) {
   const item = allItems.find(i=>i.itemInstanceId===iid);
   if (!item) return;
   const def = getItemDef(item.itemHash);
+  if (def && ARMOR_BUCKETS.has(getEffectiveBucketHash(item))) {
+    console.log('[armor-set-debug]', def.displayProperties?.name, '— setData:', def.setData, '| gearsetData:', def.gearsetData, '| itemCategoryHashes:', def.itemCategoryHashes, '| traitIds:', def.traitIds);
+  }
   const inst = instanceData[iid];
   const stats = statsData[iid];
   const socks = socketData[iid];
