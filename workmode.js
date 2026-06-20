@@ -131,6 +131,8 @@ function renderTrashMode() {
     // still belong here since they aren't truly "available" until pulled). When "All" is active,
     // every item in the slot shows regardless of mark; otherwise items matching one of the selected
     // mark filters OR favorited (Favorite is a separate boolean, checked independently and OR'd in).
+    // When "All" is active, the selected character's own items show too (not just everything else) —
+    // their transfer controls get disabled below since you can't move an item to where it already is.
     const selectedClassType = profileInfo.characterClasses?.[trashModeCharId];
     const junkItems = allItems.filter(i=>{
       if (!trashModeShowAll) {
@@ -138,8 +140,8 @@ function renderTrashMode() {
         const matchesMark = m && trashModeFilters.has(m);
         const matchesFav = trashModeFilters.has('favorite') && isFavorite(i.itemInstanceId);
         if (!matchesMark && !matchesFav) return false;
+        if (i.characterId === trashModeCharId && !i.inPostmaster) return false; // already on this char, shows on left
       }
-      if (i.characterId === trashModeCharId && !i.inPostmaster) return false; // already on this char, shows on left
       if (slot.type==='armor' && trashModeClassOnly && selectedClassType!==undefined) {
         const itemClass = getItemDef(i.itemHash)?.classType;
         if (itemClass !== selectedClassType && itemClass !== 3) return false;
@@ -186,6 +188,10 @@ function renderTrashMode() {
       const tier = gearTierOf(item.itemInstanceId);
       const border = mw ? '2px solid var(--exotic-col)' : '1px solid var(--border2)';
       const isFav = isFavorite(item.itemInstanceId);
+      // Under "All", the right side also shows the selected character's own items — those can't be
+      // transferred anywhere meaningful since they're already there, so disable transfer for them
+      // specifically (icon click, drag, bottom bar). Type and power still show either way.
+      const noTransfer = side==='junk' && item.characterId===trashModeCharId && !item.inPostmaster;
       // Mark-status indicator: Junk gets the big centered circle-slash (as it was before); Infuse
       // gets a small solid badge; Locked uses the live sync-status icon (outline=pending, solid=
       // synced) since this badge is visible at all times — it's the one that should reflect reality.
@@ -210,23 +216,23 @@ function renderTrashMode() {
           data-iid="${item.itemInstanceId}"
           data-side="${side}"
           data-slot="${slot.bucket}"
-          draggable="true"
-          style="position:relative;width:48px;height:48px;background:var(--surface2);border:${border};cursor:pointer;"
+          draggable="${noTransfer?'false':'true'}"
+          style="position:relative;width:48px;height:48px;background:var(--surface2);border:${border};cursor:${noTransfer?'default':'pointer'};"
           onmouseenter="startHoverTimer(event,'${item.itemInstanceId}')"
           onmouseleave="onIconMouseLeave()"
           oncontextmenu="showInteractiveTooltip(event,'${item.itemInstanceId}')"
-          ondragstart="onTMDragStart(event,'${item.itemInstanceId}','${side}','${slot.bucket}')"
-          onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')">
+          ${noTransfer?'':`ondragstart="onTMDragStart(event,'${item.itemInstanceId}','${side}','${slot.bucket}')"`}
+          ${noTransfer?'':`onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')"`}>
           ${icon?`<img src="${icon}" style="width:100%;height:100%;object-fit:cover;display:block;" />`:''}
           ${tmLeftEdgeBadge(tier,isCraftedItem)}
           ${locBadge}
           ${bottomRightBadge}
           ${junkOverlay}
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;width:48px;background:var(--surface);border:1px solid var(--border2);border-top:none;padding:2px 4px;cursor:pointer;"
-          onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')">
+        <div style="display:flex;align-items:center;justify-content:space-between;width:48px;background:var(--surface);border:1px solid var(--border2);border-top:none;padding:2px 4px;cursor:${noTransfer?'default':'pointer'};"
+          ${noTransfer?'':`onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')"`}>
           <span style="display:flex;align-items:center;gap:2px;line-height:0;pointer-events:none;">${dmg}<span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;color:var(--text-muted);">${power}</span></span>
-          <span style="color:var(--text-muted);font-size:11px;line-height:1;pointer-events:none;">⇄</span>
+          ${noTransfer?'':`<span style="color:var(--text-muted);font-size:11px;line-height:1;pointer-events:none;">⇄</span>`}
         </div>
       </div>`;
     };
