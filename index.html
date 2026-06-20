@@ -382,7 +382,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v118</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v119</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3449,11 +3449,12 @@ function renderTrashMode() {
       const tier = gearTierOf(item.itemInstanceId);
       const border = mw ? '2px solid var(--exotic-col)' : '1px solid var(--border2)';
       const isFav = isFavorite(item.itemInstanceId);
-      // Mark-status indicator: Junk gets the big centered circle-slash (as it was before); Locked and
-      // Infuse get a small solid badge in the bottom-right corner. Favorite is fully independent of
-      // marks (can coexist with Locked, etc.) and sits in that same bottom-right corner, to the left
-      // of the mark badge when both are present.
-      const markIconHtml = (mark === 'fav' || mark === 'infuse') ? markIconSvg(mark,15) : '';
+      // Mark-status indicator: Junk gets the big centered circle-slash (as it was before); Infuse
+      // gets a small solid badge; Locked uses the live sync-status icon (outline=pending, solid=
+      // synced) since this badge is visible at all times — it's the one that should reflect reality.
+      // Favorite is fully independent of marks and sits in that same bottom-right corner, to the
+      // left of the mark badge when both are present.
+      const markIconHtml = mark === 'fav' ? lockSyncIconSvg(item.itemInstanceId,15) : mark === 'infuse' ? markIconSvg(mark,15) : '';
       const favIconHtml = isFav ? favoriteIconInline(15) : '';
       const bottomRightBadge = (markIconHtml || favIconHtml)
         ? `<div style="position:absolute;bottom:1px;right:1px;z-index:2;display:flex;align-items:center;gap:2px;filter:drop-shadow(0 0 1.5px rgba(0,0,0,0.95));">${favIconHtml}${markIconHtml}</div>`
@@ -3780,13 +3781,19 @@ function refreshInteractiveTooltipIfOpen() {
   if (!interactiveTooltipIid || !interactiveTooltipPos) return;
   showItemTooltip({clientX:interactiveTooltipPos.x, clientY:interactiveTooltipPos.y}, interactiveTooltipIid, true);
 }
+// Robust guard against the outside-click-to-dismiss handler closing the popup on its own mark
+// button clicks. event.stopPropagation() alone isn't reliable here since the button itself gets
+// replaced (the popup refreshes) as a side effect of the very click that's still bubbling.
+let suppressNextDocClick = false;
 function toggleMarkFromTooltip(iid, mark) {
+  suppressNextDocClick = true;
   const current = getMark(iid);
   saveMark(iid, current===mark ? null : mark);
   refreshInteractiveTooltipIfOpen();
   if (document.getElementById('panel-trashmode')?.classList.contains('active')) renderTrashMode();
 }
 function toggleFavoriteFromTooltip(iid) {
+  suppressNextDocClick = true;
   toggleFavorite(iid);
   refreshInteractiveTooltipIfOpen();
   if (document.getElementById('panel-trashmode')?.classList.contains('active')) renderTrashMode();
@@ -3952,7 +3959,7 @@ function showItemTooltip(event, iid, interactive) {
 
 // ===================== KEYBOARD =====================
 document.addEventListener('keydown', e=>{ if (e.key==='Escape') { closeCompare(); clearHoverTimer(); } });
-document.addEventListener('click', ()=>{ clearHoverTimer(); });
+document.addEventListener('click', ()=>{ if (suppressNextDocClick) { suppressNextDocClick=false; return; } clearHoverTimer(); });
 document.getElementById('previewId')?.addEventListener('keydown', e=>{ if(e.key==='Enter') previewPlayer(); });
 document.getElementById('compareOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeCompare(); });
 </script>
