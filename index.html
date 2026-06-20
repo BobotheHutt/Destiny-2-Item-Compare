@@ -385,7 +385,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v105</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v106</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3348,14 +3348,17 @@ function renderTrashMode() {
   // Build slot rows — only the active category's slots are processed at all
   const activeSlots = SLOT_ORDER.filter(s=>s.type===trashModeCategory);
   const slotsHtml = activeSlots.map((slot, slotIdx)=>{
-    // Left: character items for this slot
+    // Left: character items for this slot — postmaster items excluded, since they aren't really
+    // "in inventory" yet and belong on the right side instead (see below), even for this character.
     const charItems = allItems.filter(i=>{
       if (i.characterId !== trashModeCharId) return false;
+      if (i.inPostmaster) return false;
       return getEffectiveBucketHash(i) === slot.bucket;
     });
-    // Right: items NOT on selected character. When "All" is active, every item in the slot shows
-    // regardless of mark; otherwise items matching one of the selected mark filters OR favorited
-    // (Favorite is a separate boolean, not a mark, so it's checked independently and OR'd in).
+    // Right: items NOT on selected character (except that character's own postmaster items, which
+    // still belong here since they aren't truly "available" until pulled). When "All" is active,
+    // every item in the slot shows regardless of mark; otherwise items matching one of the selected
+    // mark filters OR favorited (Favorite is a separate boolean, checked independently and OR'd in).
     const selectedClassType = profileInfo.characterClasses?.[trashModeCharId];
     const junkItems = allItems.filter(i=>{
       if (!trashModeShowAll) {
@@ -3364,7 +3367,7 @@ function renderTrashMode() {
         const matchesFav = trashModeFilters.has('favorite') && isFavorite(i.itemInstanceId);
         if (!matchesMark && !matchesFav) return false;
       }
-      if (i.characterId === trashModeCharId) return false; // already on this char, shows on left
+      if (i.characterId === trashModeCharId && !i.inPostmaster) return false; // already on this char, shows on left
       if (slot.type==='armor' && trashModeClassOnly && selectedClassType!==undefined) {
         const itemClass = getItemDef(i.itemHash)?.classType;
         if (itemClass !== selectedClassType && itemClass !== 3) return false;
@@ -3377,11 +3380,11 @@ function renderTrashMode() {
     } else if (trashModeSort === 'type' && slot.type === 'weapon') {
       junkItems.sort((a,b)=> (getItemDef(a.itemHash)?.itemTypeDisplayName||'').localeCompare(getItemDef(b.itemHash)?.itemTypeDisplayName||''));
     } else if (trashModeSort === 'location') {
-      // Postmaster items group together from ALL characters as their own section (always first),
-      // separate from regular character/vault locations — not nested inside each character's group.
+      // Order: Postmaster (all characters combined) first, then Vault, then the classes.
+      const groupRank = k => k==='Postmaster' ? 0 : k==='Vault' ? 1 : 2;
       junkItems.sort((a,b)=> {
         const ka = locationGroupKey(a), kb = locationGroupKey(b);
-        const ra = ka==='Postmaster' ? -1 : 0, rb = kb==='Postmaster' ? -1 : 0;
+        const ra = groupRank(ka), rb = groupRank(kb);
         if (ra !== rb) return ra - rb;
         if (ka !== kb) return ka.localeCompare(kb);
         return (getItemDef(a.itemHash)?.displayProperties?.name||'').localeCompare(getItemDef(b.itemHash)?.displayProperties?.name||'');
