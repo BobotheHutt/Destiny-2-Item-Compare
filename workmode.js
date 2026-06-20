@@ -229,7 +229,7 @@ function renderTrashMode() {
           ${bottomRightBadge}
           ${junkOverlay}
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;width:48px;background:var(--surface);border:1px solid var(--border2);border-top:none;padding:2px 4px;cursor:${noTransfer?'default':'pointer'};"
+        <div style="display:flex;align-items:center;justify-content:space-between;width:48px;height:16px;background:var(--surface);border:1px solid var(--border2);border-top:none;padding:2px 4px;cursor:${noTransfer?'default':'pointer'};"
           ${noTransfer?'':`onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')"`}>
           <span style="display:flex;align-items:center;gap:2px;line-height:0;pointer-events:none;">${dmg}<span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;color:var(--text-muted);">${power}</span></span>
           ${noTransfer?'':`<span style="color:var(--text-muted);font-size:11px;line-height:1;pointer-events:none;">⇄</span>`}
