@@ -382,7 +382,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v120</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v121</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3368,9 +3368,11 @@ function renderTrashMode() {
   // Class Only toggle (armor only) — restricts the right-side list to armor matching the selected
   // character's class, since wrong-class armor can never be worn by them anyway. Default on; flip off
   // to see all classes' armor at once (useful when cleaning out junk across your whole account).
-  const classOnlyHtml = trashModeCategory==='armor' ? `<div style="display:flex;align-items:center;gap:6px;">
-    <span style="font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);">Class:</span>
-    <button onclick="toggleTrashClassOnly()" style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;background:${trashModeClassOnly?'var(--accent)':'var(--surface)'};color:${trashModeClassOnly?'#0a0c0f':'var(--text-muted)'};border:1px solid ${trashModeClassOnly?'var(--accent)':'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${trashModeClassOnly?'Selected Only':'All Classes'}</button>
+  const classOnlyHtml = trashModeCategory==='armor' ? `<div style="display:flex;align-items:center;gap:8px;">
+    <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Show all class gear</span>
+    <button onclick="toggleTrashClassOnly()" title="Show all class gear" style="position:relative;width:34px;height:19px;border-radius:10px;cursor:pointer;padding:0;flex-shrink:0;background:${!trashModeClassOnly?'var(--accent)':'var(--surface2)'};border:1px solid ${!trashModeClassOnly?'var(--accent)':'var(--border2)'};transition:background .15s;">
+      <div style="position:absolute;top:1px;left:${!trashModeClassOnly?'16px':'1px'};width:15px;height:15px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div>
+    </button>
   </div>` : '';
 
   // Category toggle — Weapons or Armor. Only the active category's slots get processed below,
