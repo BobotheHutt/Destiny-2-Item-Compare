@@ -384,7 +384,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v101</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v102</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -523,6 +523,22 @@ function saveMark(instanceId, mark) {
   localStorage.setItem('d2marks', JSON.stringify(marks));
 }
 function getMark(instanceId) { return marks[instanceId] || null; }
+
+// Favorites — completely independent of marks (Locked/Junk/Infuse). Pure personal bookmark,
+// no game sync, no interaction with anything else. Can coexist with any mark, including Locked.
+let favorites = JSON.parse(localStorage.getItem('d2favorites') || '{}');
+function isFavorite(instanceId) { return !!favorites[instanceId]; }
+function toggleFavorite(instanceId) {
+  if (favorites[instanceId]) delete favorites[instanceId];
+  else favorites[instanceId] = true;
+  localStorage.setItem('d2favorites', JSON.stringify(favorites));
+}
+function favoriteIconInline(size) {
+  const s = size||15;
+  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="#3fe06a" title="Favorite">
+    <path d="M12 21s-7.5-4.9-10.2-9.3C.2 8.8 1.4 5 5 4c2.2-.6 4.3.4 5.6 2.2L12 8l1.4-1.8C14.7 4.4 16.8 3.4 19 4c3.6 1 4.8 4.8 3.2 7.7C19.5 16.1 12 21 12 21z"/>
+  </svg>`;
+}
 
 // 3-state lock button class:
 // '' = unlocked (not in app, not in game)
@@ -2018,6 +2034,7 @@ function renderGodRoll() {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:${scoreColor};">${anySelected?pct+'%':''}</div>
           <div class="mark-row" data-iid="${iid}" data-type="weapon" style="display:flex;gap:3px;">
+            <button class="fav-heart-btn" onclick="toggleFavorite('${iid}');renderGodRoll();" style="padding:3px 7px;font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius-sm);background:${isFavorite(iid)?'#3fe06a':'var(--surface)'};color:${isFavorite(iid)?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isFavorite(iid)?'#3fe06a':'var(--border2)'};">${isFavorite(iid)?'♥':'♡'} Fav</button>
             <button class="mark-btn fav ${getLockBtnClass(iid)}" data-mark="fav" style="padding:3px 7px;font-size:10px;" title="${getLockBtnTitle(iid)}">🔒 Lock</button>
             <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:3px 7px;font-size:10px;">Junk</button>
             <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:3px 7px;font-size:10px;">Infuse</button>
@@ -2217,6 +2234,7 @@ function renderArmorGodRoll() {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
           ${scoreDisplay}
           <div class="mark-row" data-iid="${iid}" data-type="armor" style="display:flex;gap:3px;">
+            <button class="fav-heart-btn" onclick="toggleFavorite('${iid}');renderArmorGodRoll();" style="padding:3px 7px;font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius-sm);background:${isFavorite(iid)?'#3fe06a':'var(--surface)'};color:${isFavorite(iid)?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isFavorite(iid)?'#3fe06a':'var(--border2)'};">${isFavorite(iid)?'♥':'♡'} Fav</button>
             <button class="mark-btn fav ${getLockBtnClass(iid)}" data-mark="fav" style="padding:3px 7px;font-size:10px;" title="${getLockBtnTitle(iid)}">🔒 Lock</button>
             <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="padding:3px 7px;font-size:10px;">Junk</button>
             <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="padding:3px 7px;font-size:10px;">Infuse</button>
@@ -3233,9 +3251,10 @@ let hoverTimer = null;
 let hoverTooltip = null;
 
 const MARK_FILTERS = [
-  {key:'fav',   label:'Locked', color:'var(--fav)'},
-  {key:'junk',  label:'Junk',   color:'var(--junk)'},
-  {key:'infuse',label:'Infuse', color:'var(--infuse)'},
+  {key:'fav',     label:'Locked',   color:'var(--fav)'},
+  {key:'junk',    label:'Junk',     color:'var(--junk)'},
+  {key:'infuse',  label:'Infuse',   color:'var(--infuse)'},
+  {key:'favorite',label:'Favorite', color:'#3fe06a'},
 ];
 
 const SLOT_ORDER = [
@@ -3325,11 +3344,16 @@ function renderTrashMode() {
       return getEffectiveBucketHash(i) === slot.bucket;
     });
     // Right: items NOT on selected character. When "All" is active, every item in the slot shows
-    // regardless of mark; otherwise only items matching one of the selected mark filters.
-    // For armor, when Class Only is on, also restrict to the selected character's class.
+    // regardless of mark; otherwise items matching one of the selected mark filters OR favorited
+    // (Favorite is a separate boolean, not a mark, so it's checked independently and OR'd in).
     const selectedClassType = profileInfo.characterClasses?.[trashModeCharId];
     const junkItems = allItems.filter(i=>{
-      if (!trashModeShowAll && !trashModeFilters.has(getMark(i.itemInstanceId))) return false;
+      if (!trashModeShowAll) {
+        const m = getMark(i.itemInstanceId);
+        const matchesMark = m && trashModeFilters.has(m);
+        const matchesFav = trashModeFilters.has('favorite') && isFavorite(i.itemInstanceId);
+        if (!matchesMark && !matchesFav) return false;
+      }
       if (i.characterId === trashModeCharId) return false; // already on this char, shows on left
       if (slot.type==='armor' && trashModeClassOnly && selectedClassType!==undefined) {
         const itemClass = getItemDef(i.itemHash)?.classType;
@@ -3359,10 +3383,15 @@ function renderTrashMode() {
       const isCraftedItem = isCrafted(item.itemInstanceId);
       const tier = gearTierOf(item.itemInstanceId);
       const border = mw ? '2px solid var(--exotic-col)' : '1px solid var(--border2)';
+      const isFav = isFavorite(item.itemInstanceId);
       // Mark-status indicator: Junk gets the big centered circle-slash (as it was before); Locked and
-      // Infuse get a small solid badge in the bottom-right corner (free now that info moved below the icon).
-      const markBadge = (mark === 'fav' || mark === 'infuse')
-        ? `<div style="position:absolute;bottom:1px;right:1px;z-index:2;line-height:0;filter:drop-shadow(0 0 1.5px rgba(0,0,0,0.95));">${markIconSvg(mark,15)}</div>`
+      // Infuse get a small solid badge in the bottom-right corner. Favorite is fully independent of
+      // marks (can coexist with Locked, etc.) and sits in that same bottom-right corner, to the left
+      // of the mark badge when both are present.
+      const markIconHtml = (mark === 'fav' || mark === 'infuse') ? markIconSvg(mark,15) : '';
+      const favIconHtml = isFav ? favoriteIconInline(15) : '';
+      const bottomRightBadge = (markIconHtml || favIconHtml)
+        ? `<div style="position:absolute;bottom:1px;right:1px;z-index:2;display:flex;align-items:center;gap:2px;filter:drop-shadow(0 0 1.5px rgba(0,0,0,0.95));">${favIconHtml}${markIconHtml}</div>`
         : '';
       const junkOverlay = mark === 'junk' ? `<div style="position:absolute;left:0;top:0;width:48px;height:48px;pointer-events:none;z-index:2;" title="Marked as junk">
         <svg viewBox="0 0 48 48" width="48" height="48" style="position:absolute;left:0;top:0;filter:drop-shadow(0 0 1.5px rgba(0,0,0,0.95));">
@@ -3387,7 +3416,7 @@ function renderTrashMode() {
           ${icon?`<img src="${icon}" style="width:100%;height:100%;object-fit:cover;display:block;" />`:''}
           ${tmLeftEdgeBadge(tier,isCraftedItem)}
           ${locBadge}
-          ${markBadge}
+          ${bottomRightBadge}
           ${junkOverlay}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;width:48px;background:var(--surface);border:1px solid var(--border2);border-top:none;padding:2px 4px;cursor:pointer;"
