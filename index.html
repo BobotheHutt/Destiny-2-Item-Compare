@@ -385,7 +385,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v109</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v111</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -478,6 +478,25 @@ let manifestStats = {};
 let manifestPerks = {};
 let manifestPlugSets = {};
 let manifestItemSets = {}; // DestinyEquipableItemSetDefinition — armor set bonus data
+let itemHashToSetName = {}; // reverse lookup built from manifestItemSets: item hash -> set display name
+function buildArmorSetLookup() {
+  itemHashToSetName = {};
+  Object.values(manifestItemSets).forEach(set => {
+    const setName = set.displayProperties?.name;
+    if (!setName) return;
+    (set.setItems||[]).forEach(h => { itemHashToSetName[h] = setName; });
+  });
+  // One-time export — slim data (name + item hashes only) so this can be baked into a static
+  // file in the repo instead of fetching the live manifest table on every fresh session.
+  const slim = Object.values(manifestItemSets)
+    .filter(s => s.displayProperties?.name)
+    .map(s => ({ name: s.displayProperties.name, items: s.setItems||[] }));
+  console.log('[armor-set-export] Copy everything between the markers below into a reply:');
+  console.log('===ARMOR_SET_DATA_START===');
+  console.log(JSON.stringify(slim));
+  console.log('===ARMOR_SET_DATA_END===');
+}
+function getArmorSetName(itemHash) { return itemHashToSetName[itemHash] || null; }
 let allItems      = []; // all weapon+armor items across chars+vault
 let profileLoaded = false;
 let isPreviewMode = false;
@@ -996,9 +1015,7 @@ async function previewPlayer() {
       ]);
       manifestItems=items; manifestStats=stats; manifestPerks=perks; manifestPlugSets=plugSets; manifestItemSets=itemSets;
       Object.values(damageTypes).forEach(dt=>{ if(dt.enumValue&&dt.displayProperties?.hasIcon) manifestDamageTypes[dt.enumValue]=dt.displayProperties.icon; });
-      // One-time diagnostic — confirms the real shape of the armor-set table before we build the lookup on top of it
-      const firstSet = Object.values(manifestItemSets)[0];
-      console.log('[armor-set-debug] DestinyEquipableItemSetDefinition: table size', Object.keys(manifestItemSets).length, '— sample entry:', firstSet);
+      buildArmorSetLookup();
     }
 
     // Preview uses public components only (no OAuth)
@@ -1099,9 +1116,7 @@ async function searchPlayer() {
         fetch('https://www.bungie.net'+base.DestinyEquipableItemSetDefinition).then(r=>r.json()),
       ]);
       manifestItems = items; manifestStats = stats; manifestPerks = perks; manifestPlugSets = plugSets; manifestItemSets = itemSets;
-      // One-time diagnostic — confirms the real shape of the armor-set table before we build the lookup on top of it
-      const firstSet = Object.values(manifestItemSets)[0];
-      console.log('[armor-set-debug] DestinyEquipableItemSetDefinition: table size', Object.keys(manifestItemSets).length, '— sample entry:', firstSet);
+      buildArmorSetLookup();
       // Build damage type icon map from manifest
       Object.values(damageTypes).forEach(dt => {
         const enumVal = dt.enumValue;
@@ -3329,10 +3344,10 @@ function renderTrashMode() {
     return `<button onclick="toggleTrashFilter('${f.key}')" style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;background:${isActive?f.color:'var(--surface)'};color:${isActive?'#0a0c0f':'var(--text-muted)'};border:1px solid ${isActive?f.color:'var(--border2)'};cursor:pointer;border-radius:var(--radius-sm);">${f.label}</button>`;
   }).join('');
 
-  // Sort selector — Default/Power/Location apply to both weapons and armor; Type is weapon-only
-  // (a reliable equivalent for armor "set" isn't available from the data we fetch)
+  // Sort selector — Default/Power/Location apply to both weapons and armor; Type is weapon-only,
+  // Set is armor-only (built from the real DestinyEquipableItemSetDefinition lookup).
   const SORT_OPTIONS = trashModeCategory === 'armor'
-    ? [{key:'default', label:'Default'}, {key:'power', label:'Power'}, {key:'location', label:'Location'}]
+    ? [{key:'default', label:'Default'}, {key:'power', label:'Power'}, {key:'set', label:'Set'}, {key:'location', label:'Location'}]
     : [{key:'default', label:'Default'}, {key:'power', label:'Power'}, {key:'type', label:'Type'}, {key:'location', label:'Location'}];
   const sortSelHtmlSmall = SORT_OPTIONS.map(s=>{
     const isActive = s.key===trashModeSort;
@@ -3388,6 +3403,15 @@ function renderTrashMode() {
       junkItems.sort((a,b)=> (instanceData[b.itemInstanceId]?.primaryStat?.value||0) - (instanceData[a.itemInstanceId]?.primaryStat?.value||0));
     } else if (trashModeSort === 'type' && slot.type === 'weapon') {
       junkItems.sort((a,b)=> (getItemDef(a.itemHash)?.itemTypeDisplayName||'').localeCompare(getItemDef(b.itemHash)?.itemTypeDisplayName||''));
+    } else if (trashModeSort === 'set' && slot.type === 'armor') {
+      // Items belonging to a named set group together; items with no set (most older/non-set gear) sort last.
+      junkItems.sort((a,b)=> {
+        const sa = getArmorSetName(a.itemHash), sb = getArmorSetName(b.itemHash);
+        const ra = sa ? 0 : 1, rb = sb ? 0 : 1;
+        if (ra !== rb) return ra - rb;
+        if (sa !== sb) return (sa||'').localeCompare(sb||'');
+        return (getItemDef(a.itemHash)?.displayProperties?.name||'').localeCompare(getItemDef(b.itemHash)?.displayProperties?.name||'');
+      });
     } else if (trashModeSort === 'location') {
       // Order: Postmaster (all characters combined) first, then Vault, then the classes.
       const groupRank = k => k==='Postmaster' ? 0 : k==='Vault' ? 1 : 2;
@@ -3469,7 +3493,8 @@ function renderTrashMode() {
 
     // Right side: items matching the active filter. When sorted by a grouping field (Type/Location),
     // insert a labeled divider wherever the group changes, so boundaries are easy to spot.
-    const groupKeyFn = trashModeSort==='type' ? (i=>getItemDef(i.itemHash)?.itemTypeDisplayName||'Unknown')
+    const groupKeyFn = trashModeSort==='type' && slot.type==='weapon' ? (i=>getItemDef(i.itemHash)?.itemTypeDisplayName||'Unknown')
+      : trashModeSort==='set' && slot.type==='armor' ? (i=>getArmorSetName(i.itemHash)||'No Set')
       : trashModeSort==='location' ? locationGroupKey
       : null;
     let junkIcons = '';
@@ -3721,9 +3746,6 @@ function showItemTooltip(event, iid) {
   const item = allItems.find(i=>i.itemInstanceId===iid);
   if (!item) return;
   const def = getItemDef(item.itemHash);
-  if (def && ARMOR_BUCKETS.has(getEffectiveBucketHash(item))) {
-    console.log('[armor-set-debug] FULL DEF for', def.displayProperties?.name, def);
-  }
   const inst = instanceData[iid];
   const stats = statsData[iid];
   const socks = socketData[iid];
