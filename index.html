@@ -341,9 +341,6 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
     <div class="logo-mark"><div class="logo-inner"></div></div>
     <h1>Destiny 2 <span>Item Compare</span></h1>
     <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
-      <button id="hideCraftedBtn" onclick="toggleHideCrafted()" style="background:var(--surface);border:1px solid var(--border2);color:var(--text-muted);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;cursor:pointer;">
-        Hide Crafted
-      </button>
       <button id="refreshBtn" onclick="refreshProfile()" style="display:none;background:var(--surface);border:1px solid var(--border2);color:var(--text-muted);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;cursor:pointer;align-items:center;gap:6px;">
         <span>↻</span><span id="refreshLabel">Refresh</span>
       </button>
@@ -385,7 +382,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v112</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v113</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -500,6 +497,7 @@ let profileInfo   = {};
 
 let weaponFilter  = {exotic:false, legendary:true, dupes:false, locked:false};
 let armorFilter   = {exotic:false, legendary:true, locked:false, dupes:false};
+let armorSetFilter = ''; // selected armor set name to filter by, '' = no filter (all sets)
 let hideCraftedWeapons = localStorage.getItem('d2hidecrafted') === '1';
 let activeWeaponCategory = null;
 let activeWeaponType     = null;
@@ -1340,7 +1338,7 @@ function renderWeaponsTab() {
         <button class="toggle-btn ${weaponFilter.dupes?'active':''}" onclick="toggleWeaponFilter('dupes',this)" style="${weaponFilter.dupes?'background:var(--accent);color:#0a0c0f;border-color:var(--accent);':'border-color:var(--accent);color:var(--accent);'}">Dupes Only</button>
         <button class="toggle-btn ${weaponFilter.locked?'active':''}" onclick="toggleWeaponFilter('locked',this)" style="${weaponFilter.locked?'background:var(--fav);color:#0a0c0f;border-color:var(--fav);':'border-color:var(--fav);color:var(--fav);'}">🔒 Locked</button>
       </div>
-      <button onclick="clearAllMarks('weapon')" style="margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text-dim);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;cursor:pointer;">Clear All Marks</button>
+      <button onclick="toggleHideCrafted()" style="margin-left:auto;background:${hideCraftedWeapons?'var(--accent)':'var(--surface)'};border:1px solid ${hideCraftedWeapons?'var(--accent)':'var(--border2)'};color:${hideCraftedWeapons?'#0a0c0f':'var(--text-muted)'};font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;cursor:pointer;border-radius:var(--radius-sm);">Hide Crafted</button>
     </div>
     <div id="weaponAccordions"></div>
     <div id="weaponTypeSection"></div>
@@ -1348,18 +1346,9 @@ function renderWeaponsTab() {
   buildWeaponAccordions();
 }
 
-function syncHideCraftedBtn() {
-  const btn = document.getElementById('hideCraftedBtn');
-  if (!btn) return;
-  btn.style.background = hideCraftedWeapons ? 'var(--accent)' : 'var(--surface)';
-  btn.style.borderColor = hideCraftedWeapons ? 'var(--accent)' : 'var(--border2)';
-  btn.style.color = hideCraftedWeapons ? '#0a0c0f' : 'var(--text-muted)';
-}
-
 function toggleHideCrafted() {
   hideCraftedWeapons = !hideCraftedWeapons;
   localStorage.setItem('d2hidecrafted', hideCraftedWeapons ? '1' : '0');
-  syncHideCraftedBtn();
   renderWeaponsTab();
   if (activeWeaponBHash && activeWeaponType) {
     selectWeaponType(activeWeaponBHash, activeWeaponType);
@@ -1535,6 +1524,8 @@ function selectWeaponType(bHash, type) {
 // ===================== ARMOR TAB =====================
 function renderArmorTab() {
   const el = document.getElementById('panel-armor');
+  const ownedSets = getOwnedArmorSetNames();
+  const setOptionsHtml = `<option value="">All Sets</option>` + ownedSets.map(n=>`<option value="${n}" ${armorSetFilter===n?'selected':''}>${n}</option>`).join('');
   el.innerHTML = `
     <div class="inv-controls">
       <div class="toggle-group">
@@ -1543,7 +1534,7 @@ function renderArmorTab() {
         <button class="toggle-btn ${armorFilter.dupes?'active':''}" onclick="toggleArmorFilter('dupes',this)" style="${armorFilter.dupes?'background:var(--accent);color:#0a0c0f;border-color:var(--accent);':'border-color:var(--accent);color:var(--accent);'}">Dupes Only</button>
         <button class="toggle-btn ${armorFilter.locked?'active':''}" onclick="toggleArmorFilter('locked',this)" style="${armorFilter.locked?'background:var(--fav);color:#0a0c0f;border-color:var(--fav);':'border-color:var(--fav);color:var(--fav);'}">🔒 Locked</button>
       </div>
-      <button onclick="clearAllMarks('armor')" style="margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text-dim);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;cursor:pointer;">Clear All Marks</button>
+      <select onchange="selectArmorSetFilter(this.value)" style="margin-left:auto;background:var(--surface);border:1px solid ${armorSetFilter?'var(--accent)':'var(--border2)'};color:${armorSetFilter?'var(--accent)':'var(--text-muted)'};font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:5px 8px;cursor:pointer;border-radius:var(--radius-sm);">${setOptionsHtml}</select>
     </div>
     <div id="armorAccordions"></div>
     <div id="armorSlotSection"></div>
@@ -1560,28 +1551,20 @@ function toggleArmorFilter(type, btn) {
   }
 }
 
-function clearAllMarks(tabType) {
-  const label = tabType==='weapon' ? 'weapons' : 'armor';
-  if (!confirm(`Clear all app marks (junk, infuse, app-only locks) for all ${label}? Items locked in game will be kept.`)) return;
-  const toDelete = allItems.filter(i=>{
-    if (!i.itemInstanceId) return false;
-    const effectiveBucket = getEffectiveBucketHash(i);
-    if (tabType==='weapon' && !WEAPON_BUCKETS.has(effectiveBucket)) return false;
-    if (tabType==='armor' && !ARMOR_BUCKETS.has(effectiveBucket)) return false;
-    if (tabType!=='weapon' && tabType!=='armor') return false;
-    // Keep items that are actually locked in game
-    if (inGameLockState[i.itemInstanceId]) return false;
-    return true;
+function getOwnedArmorSetNames() {
+  const names = new Set();
+  allItems.forEach(i=>{
+    if (!ARMOR_BUCKETS.has(getEffectiveBucketHash(i))) return;
+    const setName = getArmorSetName(i.itemHash);
+    if (setName) names.add(setName);
   });
-  toDelete.forEach(i=>{ delete marks[i.itemInstanceId]; });
-  localStorage.setItem('d2marks', JSON.stringify(marks));
-  if (tabType==='weapon') {
-    renderWeaponsTab();
-    if (activeWeaponBHash && activeWeaponType) selectWeaponType(activeWeaponBHash, activeWeaponType);
-  } else {
-    renderArmorTab();
-    if (activeArmorClass!==null && activeArmorSlot) selectArmorSlot(activeArmorClass, activeArmorSlot);
-  }
+  return [...names].sort();
+}
+
+function selectArmorSetFilter(value) {
+  armorSetFilter = value;
+  renderArmorTab();
+  if (activeArmorClass!==null && activeArmorSlot) selectArmorSlot(activeArmorClass, activeArmorSlot);
 }
 
 function getFilteredArmor() {
@@ -1595,6 +1578,7 @@ function getFilteredArmor() {
     if (tier<5) return false;
     if (armorFilter.locked && getMark(i.itemInstanceId)!=='fav') return false;
     if (showNewArmorOnly && !isNewArmor(i)) return false;
+    if (armorSetFilter && getArmorSetName(i.itemHash) !== armorSetFilter) return false;
     return true;
   });
   if (!armorFilter.dupes) return base;
@@ -3857,7 +3841,6 @@ function showItemTooltip(event, iid) {
   updateOAuthStatus();
   initThemePicker();
   applyTheme(currentTheme, currentAccent);
-  syncHideCraftedBtn();
   // Handle OAuth callback redirect - auto-load profile after login
   if (window.location.search.includes('code=')) {
     const ok = await handleOAuthCallback();
