@@ -382,7 +382,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v113</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v115</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -2812,11 +2812,12 @@ function renderMarkTab(markType) {
 
   function markBtns(r) {
     const m = getMark(r.iid);
+    const isFav = isFavorite(r.iid);
     return `<div style="display:flex;align-items:center;gap:3px;">
-      <button class="mark-btn fav ${getLockBtnClass(r.iid)}" data-iid="${r.iid}" data-mark="fav" data-tab="${markType}" data-pending="" title="${getLockBtnTitle(r.iid)}" style="padding:4px 10px;font-size:13px;">🔒</button>
-      <button class="mark-btn junk ${m==='junk'?'active':''}" data-iid="${r.iid}" data-mark="junk" data-tab="${markType}" data-pending="" style="padding:4px 10px;font-size:12px;">Junk</button>
-      <button class="mark-btn infuse ${m==='infuse'?'active':''}" data-iid="${r.iid}" data-mark="infuse" data-tab="${markType}" data-pending="" style="padding:4px 10px;font-size:13px;">&#9889;</button>
-      <button class="mark-btn clear-btn" data-iid="${r.iid}" data-mark="clear" data-tab="${markType}" data-pending="" style="padding:4px 10px;font-size:13px;">&#215;</button>
+      <button class="fav-heart-btn" onclick="toggleFavorite('${r.iid}');renderMarkTab('${markType}');" style="flex:0 0 42px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px 0;font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius-sm);background:${isFav?'var(--favorite)':'var(--surface)'};color:${isFav?'#0a0c0f':'var(--text-muted)'};border:1px solid var(--favorite);line-height:0;">${favoriteIconInline(12, isFav?'#0a0c0f':'var(--favorite)')}<span style="line-height:1;margin-top:1px;">Fav</span></button>
+      <button class="mark-btn fav ${getLockBtnClass(r.iid)}" data-iid="${r.iid}" data-mark="fav" data-tab="${markType}" data-pending="" title="${getLockBtnTitle(r.iid)}" style="flex:0 0 42px;padding:4px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:8px;"><span style="font-size:11px;">🔒</span><span>Lock</span></button>
+      <button class="mark-btn junk ${m==='junk'?'active':''}" data-iid="${r.iid}" data-mark="junk" data-tab="${markType}" data-pending="" style="flex:0 0 42px;padding:4px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:8px;line-height:0;">${markIconSvg('junk',12,m==='junk'?'#fff':'var(--junk)')}<span style="line-height:1;margin-top:1px;">Junk</span></button>
+      <button class="mark-btn infuse ${m==='infuse'?'active':''}" data-iid="${r.iid}" data-mark="infuse" data-tab="${markType}" data-pending="" style="flex:0 0 42px;padding:4px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:8px;line-height:0;">${markIconSvg('infuse',12,m==='infuse'?'#0a0c0f':'var(--infuse)')}<span style="line-height:1;margin-top:1px;">Infuse</span></button>
       <button class="confirm-mark-btn" data-iid="${r.iid}" data-tab="${markType}" style="display:none;background:var(--fav);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;cursor:pointer;">OK</button>
     </div>`;
   }
@@ -2831,8 +2832,8 @@ function renderMarkTab(markType) {
       <td><div class="junk-name-cell">
         <div class="rarity-dot ${r.rk}"></div>
         <div class="junk-icon" style="${isMasterworked(r.iid)?'outline:2px solid var(--exotic-col);outline-offset:-2px;':''}">${r.icon?`<img src="https://www.bungie.net${r.icon}" />`:'?'}
-          ${tierPipsSvg(gearTierOf(r.iid),'sm')}
-          ${iconBottomBar(getItemDef(r.item.itemHash), r.power, r.category==='Weapon'&&isCrafted(r.iid), 'sm')}
+          ${tmLeftEdgeBadge(gearTierOf(r.iid), r.category==='Weapon'&&isCrafted(r.iid))}
+          ${isFavorite(r.iid)?`<div style="position:absolute;bottom:1px;right:1px;z-index:2;line-height:0;filter:drop-shadow(0 0 1.5px rgba(0,0,0,0.95));">${favoriteIconInline(13,'var(--favorite)')}</div>`:''}
         </div>
         <div><div class="junk-item-name">${r.name}</div><div class="junk-item-sub">${r.typeLabel}</div></div>
       </div></td>
@@ -3002,7 +3003,9 @@ function renderMarkTab(markType) {
     btn.addEventListener('click', ()=>{
       const iid = btn.dataset.iid;
       const tab = btn.dataset.tab;
-      const newMark = btn.dataset.mark==='clear'?null:btn.dataset.mark;
+      const current = getMark(iid);
+      // Clicking the already-active mark stages a clear instead of re-applying the same mark
+      const newMark = current===btn.dataset.mark ? null : btn.dataset.mark;
       const row = btn.closest('tr');
       if (row) {
         row.querySelectorAll('.mark-btn[data-iid]').forEach(b=>b.classList.remove('pending-select'));
