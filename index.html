@@ -382,7 +382,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v115</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v116</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -524,10 +524,30 @@ function applyClassTheme(classType) {
 }
 
 function saveMark(instanceId, mark) {
+  const prevMark = marks[instanceId] || null;
   if (mark === null) { delete marks[instanceId]; } else { marks[instanceId] = mark; }
   localStorage.setItem('d2marks', JSON.stringify(marks));
+  // Lock status changed (either direction) — schedule a reactive auto-sync check
+  if (mark === 'fav' || prevMark === 'fav') scheduleLockAutoSync();
 }
 function getMark(instanceId) { return marks[instanceId] || null; }
+
+// Reactive lock auto-sync — debounced so rapid toggles batch into one sync, and only actually
+// calls Bungie if there's a real mismatch between app marks and in-game lock state. No polling.
+let lockAutoSyncTimer = null;
+function scheduleLockAutoSync() {
+  clearTimeout(lockAutoSyncTimer);
+  lockAutoSyncTimer = setTimeout(async () => {
+    if (!profileLoaded || isPreviewMode) return;
+    const mismatched = allItems.some(i => {
+      if (!i.itemInstanceId) return false;
+      const appLocked = getMark(i.itemInstanceId) === 'fav';
+      const gameLocked = inGameLockState[i.itemInstanceId] || false;
+      return appLocked !== gameLocked;
+    });
+    if (mismatched) await syncLocksToGame();
+  }, 1500);
+}
 
 // Favorites — completely independent of marks (Locked/Junk/Infuse). Pure personal bookmark,
 // no game sync, no interaction with anything else. Can coexist with any mark, including Locked.
@@ -623,6 +643,8 @@ async function syncLocksToGame() {
     setTimeout(()=>{ if(btn) btn.textContent='Sync to Game'; }, 3000);
   }
   renderMarkTab('fav');
+  if (document.getElementById('panel-trashmode')?.classList.contains('active')) renderTrashMode();
+  refreshInteractiveTooltipIfOpen();
 }
 
 function getItemDef(hash) { return manifestItems[hash] || manifestItems[hash>>>0] || null; }
@@ -725,6 +747,24 @@ function markIconSvg(mark, size, color) {
     <rect x="4" y="7" width="16" height="2" rx="1"></rect>
     <rect x="9" y="3" width="6" height="3" rx="1"></rect>
     <path d="M6 9.5h12l-1.2 11a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6 9.5z"></path>
+  </svg>`;
+}
+// Lock icon with live sync-status: solid fill when locked AND confirmed synced to the game,
+// outline-only when locked in the app but not yet confirmed in-game (pending), neutral when not locked.
+function lockSyncIconSvg(instanceId, size) {
+  const s = size||15;
+  const appLocked = getMark(instanceId) === 'fav';
+  const gameLocked = inGameLockState[instanceId] || false;
+  if (!appLocked) {
+    return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" title="Lock">
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="var(--text-muted)" stroke-width="2.2" stroke-linecap="round"></path>
+      <rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="var(--text-muted)" stroke-width="1.6"></rect>
+    </svg>`;
+  }
+  const synced = appLocked === gameLocked;
+  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" title="${synced?'Locked — synced with game':'Locked — pending sync to game'}">
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="#3fe06a" stroke-width="2.2" stroke-linecap="round"></path>
+    <rect x="5" y="11" width="14" height="9" rx="2" fill="${synced?'#3fe06a':'none'}" stroke="${synced?'none':'#3fe06a'}" stroke-width="${synced?'0':'2'}"></rect>
   </svg>`;
 }
 // Work Mode-specific left-edge strip — combines gear tier pips (upper) and crafted indicator (pinned to
@@ -3436,6 +3476,7 @@ function renderTrashMode() {
           style="position:relative;width:48px;height:48px;background:var(--surface2);border:${border};cursor:pointer;"
           onmouseenter="startHoverTimer(event,'${item.itemInstanceId}')"
           onmouseleave="clearHoverTimer()"
+          oncontextmenu="showInteractiveTooltip(event,'${item.itemInstanceId}')"
           ondragstart="onTMDragStart(event,'${item.itemInstanceId}','${side}','${slot.bucket}')"
           onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')">
           ${icon?`<img src="${icon}" style="width:100%;height:100%;object-fit:cover;display:block;" />`:''}
@@ -3705,6 +3746,8 @@ async function transferItem(iid, side, slotBucket) {
 }
 
 // Hover tooltip
+let interactiveTooltipIid = null; // which item's right-click popup is open, if any (for refreshing after auto-sync)
+let interactiveTooltipPos = null; // {x,y} screen position to redraw the popup in place without a new mouse event
 function startHoverTimer(event, iid) {
   clearHoverTimer();
   hoverTimer = setTimeout(()=>showItemTooltip(event, iid), 1500);
@@ -3712,10 +3755,36 @@ function startHoverTimer(event, iid) {
 function clearHoverTimer() {
   if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer=null; }
   if (hoverTooltip) { hoverTooltip.remove(); hoverTooltip=null; }
+  interactiveTooltipIid = null;
+  interactiveTooltipPos = null;
 }
-function showItemTooltip(event, iid) {
+// Right-click opens the same popup instantly (no delay) with mark buttons added, replacing
+// any hover popup so the two never compete for the same spot.
+function showInteractiveTooltip(event, iid) {
+  event.preventDefault();
+  event.stopPropagation();
+  clearHoverTimer();
+  showItemTooltip(event, iid, true);
+}
+function refreshInteractiveTooltipIfOpen() {
+  if (!interactiveTooltipIid || !interactiveTooltipPos) return;
+  showItemTooltip({clientX:interactiveTooltipPos.x, clientY:interactiveTooltipPos.y}, interactiveTooltipIid, true);
+}
+function toggleMarkFromTooltip(iid, mark) {
+  const current = getMark(iid);
+  saveMark(iid, current===mark ? null : mark);
+  refreshInteractiveTooltipIfOpen();
+  if (document.getElementById('panel-trashmode')?.classList.contains('active')) renderTrashMode();
+}
+function toggleFavoriteFromTooltip(iid) {
+  toggleFavorite(iid);
+  refreshInteractiveTooltipIfOpen();
+  if (document.getElementById('panel-trashmode')?.classList.contains('active')) renderTrashMode();
+}
+function showItemTooltip(event, iid, interactive) {
   const item = allItems.find(i=>i.itemInstanceId===iid);
   if (!item) return;
+  if (interactive) { interactiveTooltipIid = iid; interactiveTooltipPos = {x: event.clientX, y: event.clientY}; }
   const def = getItemDef(item.itemHash);
   const inst = instanceData[iid];
   const stats = statsData[iid];
@@ -3804,11 +3873,20 @@ function showItemTooltip(event, iid) {
     }
   }
 
+  const markButtonsHtml = interactive ? `
+    <div style="position:absolute;top:8px;right:8px;display:flex;gap:3px;pointer-events:auto;z-index:2;">
+      <button onclick="event.stopPropagation();toggleFavoriteFromTooltip('${iid}')" title="Favorite" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:${isFavorite(iid)?'var(--favorite)':'var(--surface2)'};border:1px solid var(--favorite);border-radius:4px;cursor:pointer;padding:0;">${favoriteIconInline(13, isFavorite(iid)?'#0a0c0f':'var(--favorite)')}</button>
+      <button onclick="event.stopPropagation();toggleMarkFromTooltip('${iid}','fav')" title="Lock" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;cursor:pointer;padding:0;">${lockSyncIconSvg(iid,14)}</button>
+      <button onclick="event.stopPropagation();toggleMarkFromTooltip('${iid}','junk')" title="Junk" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:${getMark(iid)==='junk'?'var(--junk)':'var(--surface2)'};border:1px solid var(--junk);border-radius:4px;cursor:pointer;padding:0;">${markIconSvg('junk',13,getMark(iid)==='junk'?'#fff':'var(--junk)')}</button>
+      <button onclick="event.stopPropagation();toggleMarkFromTooltip('${iid}','infuse')" title="Infuse" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:${getMark(iid)==='infuse'?'var(--infuse)':'var(--surface2)'};border:1px solid var(--infuse);border-radius:4px;cursor:pointer;padding:0;">${markIconSvg('infuse',13,getMark(iid)==='infuse'?'#0a0c0f':'var(--infuse)')}</button>
+    </div>` : '';
+
   const tt = document.createElement('div');
-  tt.style.cssText = `position:fixed;z-index:9999;background:#0e1015;border:1px solid ${rarityColor};padding:0;max-width:280px;min-width:220px;pointer-events:none;font-family:'Barlow',sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.7);`;
+  tt.style.cssText = `position:fixed;z-index:9999;background:#0e1015;border:1px solid ${rarityColor};padding:0;max-width:280px;min-width:220px;pointer-events:${interactive?'auto':'none'};font-family:'Barlow',sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.7);`;
   tt.innerHTML = `
     <div style="height:4px;background:${rarityColor};"></div>
-    <div style="padding:10px 12px;">
+    <div style="padding:10px 12px;position:relative;">
+      ${markButtonsHtml}
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;">
         ${iconPath?`<div style="position:relative;width:56px;height:56px;flex-shrink:0;background:var(--surface2);${mw?'outline:2px solid var(--exotic-col);outline-offset:-2px;':''}"><img src="${iconPath}" style="width:100%;height:100%;object-fit:cover;display:block;" />${tierPipsSvg(gearTierOf(iid),'lg')}${isCrafted(iid)?`<div style="position:absolute;bottom:2px;left:2px;line-height:0;">${craftedIconInline(13)}</div>`:''}</div>`:''}
         <div style="flex:1;min-width:0;">
