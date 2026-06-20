@@ -382,7 +382,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v116</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v117</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3475,7 +3475,7 @@ function renderTrashMode() {
           draggable="true"
           style="position:relative;width:48px;height:48px;background:var(--surface2);border:${border};cursor:pointer;"
           onmouseenter="startHoverTimer(event,'${item.itemInstanceId}')"
-          onmouseleave="clearHoverTimer()"
+          onmouseleave="onIconMouseLeave()"
           oncontextmenu="showInteractiveTooltip(event,'${item.itemInstanceId}')"
           ondragstart="onTMDragStart(event,'${item.itemInstanceId}','${side}','${slot.bucket}')"
           onclick="transferItem('${item.itemInstanceId}','${side}','${slot.bucket}')">
@@ -3758,6 +3758,16 @@ function clearHoverTimer() {
   interactiveTooltipIid = null;
   interactiveTooltipPos = null;
 }
+// Mouseleave on an icon: a plain hover tooltip should still close as normal, but an interactive
+// (right-click) popup should stay open until explicitly dismissed via outside click or Escape —
+// otherwise it'd vanish the instant you move toward the popup itself to click a mark button.
+function onIconMouseLeave() {
+  if (interactiveTooltipIid) {
+    if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer=null; }
+    return;
+  }
+  clearHoverTimer();
+}
 // Right-click opens the same popup instantly (no delay) with mark buttons added, replacing
 // any hover popup so the two never compete for the same spot.
 function showInteractiveTooltip(event, iid) {
@@ -3874,9 +3884,9 @@ function showItemTooltip(event, iid, interactive) {
   }
 
   const markButtonsHtml = interactive ? `
-    <div style="position:absolute;top:8px;right:8px;display:flex;gap:3px;pointer-events:auto;z-index:2;">
+    <div style="display:flex;justify-content:flex-end;gap:3px;margin-bottom:8px;">
       <button onclick="event.stopPropagation();toggleFavoriteFromTooltip('${iid}')" title="Favorite" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:${isFavorite(iid)?'var(--favorite)':'var(--surface2)'};border:1px solid var(--favorite);border-radius:4px;cursor:pointer;padding:0;">${favoriteIconInline(13, isFavorite(iid)?'#0a0c0f':'var(--favorite)')}</button>
-      <button onclick="event.stopPropagation();toggleMarkFromTooltip('${iid}','fav')" title="Lock" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;cursor:pointer;padding:0;">${lockSyncIconSvg(iid,14)}</button>
+      <button onclick="event.stopPropagation();toggleMarkFromTooltip('${iid}','fav')" title="Lock" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--fav);border-radius:4px;cursor:pointer;padding:0;">${lockSyncIconSvg(iid,14)}</button>
       <button onclick="event.stopPropagation();toggleMarkFromTooltip('${iid}','junk')" title="Junk" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:${getMark(iid)==='junk'?'var(--junk)':'var(--surface2)'};border:1px solid var(--junk);border-radius:4px;cursor:pointer;padding:0;">${markIconSvg('junk',13,getMark(iid)==='junk'?'#fff':'var(--junk)')}</button>
       <button onclick="event.stopPropagation();toggleMarkFromTooltip('${iid}','infuse')" title="Infuse" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:${getMark(iid)==='infuse'?'var(--infuse)':'var(--surface2)'};border:1px solid var(--infuse);border-radius:4px;cursor:pointer;padding:0;">${markIconSvg('infuse',13,getMark(iid)==='infuse'?'#0a0c0f':'var(--infuse)')}</button>
     </div>` : '';
@@ -3885,7 +3895,7 @@ function showItemTooltip(event, iid, interactive) {
   tt.style.cssText = `position:fixed;z-index:9999;background:#0e1015;border:1px solid ${rarityColor};padding:0;max-width:280px;min-width:220px;pointer-events:${interactive?'auto':'none'};font-family:'Barlow',sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.7);`;
   tt.innerHTML = `
     <div style="height:4px;background:${rarityColor};"></div>
-    <div style="padding:10px 12px;position:relative;">
+    <div style="padding:10px 12px;">
       ${markButtonsHtml}
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;">
         ${iconPath?`<div style="position:relative;width:56px;height:56px;flex-shrink:0;background:var(--surface2);${mw?'outline:2px solid var(--exotic-col);outline-offset:-2px;':''}"><img src="${iconPath}" style="width:100%;height:100%;object-fit:cover;display:block;" />${tierPipsSvg(gearTierOf(iid),'lg')}${isCrafted(iid)?`<div style="position:absolute;bottom:2px;left:2px;line-height:0;">${craftedIconInline(13)}</div>`:''}</div>`:''}
