@@ -382,7 +382,7 @@ button.primary:disabled { opacity:.4; cursor:not-allowed; }
   </div>
 
 </div>
-<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v117</div>
+<div style="position:fixed;bottom:10px;right:14px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.08em;color:var(--text-dim);pointer-events:none;z-index:999;">v118</div>
 
 <!-- Starfield canvas -->
 <canvas id="starCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 1s;"></canvas>
@@ -3794,6 +3794,10 @@ function toggleFavoriteFromTooltip(iid) {
 function showItemTooltip(event, iid, interactive) {
   const item = allItems.find(i=>i.itemInstanceId===iid);
   if (!item) return;
+  // Always clear out any existing tooltip element first — without this, refreshing an
+  // interactive popup in place (after clicking a mark button) creates a brand new DOM element
+  // every time without removing the old one, leaving orphaned stacked popups that never close.
+  if (hoverTooltip) { hoverTooltip.remove(); hoverTooltip = null; }
   if (interactive) { interactiveTooltipIid = iid; interactiveTooltipPos = {x: event.clientX, y: event.clientY}; }
   const def = getItemDef(item.itemHash);
   const inst = instanceData[iid];
