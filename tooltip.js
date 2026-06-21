@@ -81,6 +81,15 @@ function applyTheme(theme, accent, brightness) {
     root.style.setProperty('--accent2', '#e8c96a');
   }
 
+  // Compute semi-transparent accent variants (avoids color-mix for older browser compat)
+  const accentHex = getComputedStyle(root).getPropertyValue('--accent').trim();
+  const hm = accentHex.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (hm) {
+    const [r,g,b] = [parseInt(hm[1],16), parseInt(hm[2],16), parseInt(hm[3],16)];
+    root.style.setProperty('--accent-dim',    `rgba(${r},${g},${b},0.4)`);
+    root.style.setProperty('--accent-subtle', `rgba(${r},${g},${b},0.15)`);
+  }
+
   updateThemePickerUI();
 }
 

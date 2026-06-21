@@ -219,11 +219,13 @@ function renderArmorGodRoll() {
   // Stat selector — 3 priority slots (matching the in-game 3-stat-priority system), each showing
   // all 6 stats as checkboxes in canonical order; only one can be checked per slot.
   const selectorHtml = armorGodRollStats.map((s, idx) => {
+    const usedByOthers = new Set(armorGodRollStats.filter((_,i) => i !== idx).map(x => x.hash).filter(Boolean));
     const checksHtml = ARMOR_STAT_HASHES.map(h => {
       const checked = s.hash === h;
-      return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 0;">
-        <input type="checkbox" class="agr-stat-check" data-idx="${idx}" data-hash="${h}" ${checked?'checked':''} style="accent-color:var(--accent);cursor:pointer;width:13px;height:13px;flex-shrink:0;" />
-        <span style="font-size:11px;color:var(--text);">${ARMOR_STAT_NAMES[h]}</span>
+      const taken = usedByOthers.has(h);
+      return `<label style="display:flex;align-items:center;gap:6px;cursor:${taken?'default':'pointer'};padding:2px 0;${taken?'opacity:0.3;':''}">
+        <input type="checkbox" class="agr-stat-check" data-idx="${idx}" data-hash="${h}" ${checked?'checked':''} ${taken?'disabled':''} style="accent-color:var(--accent);cursor:${taken?'default':'pointer'};width:13px;height:13px;flex-shrink:0;" />
+        <span style="font-size:11px;color:${taken?'var(--text-dim)':'var(--text)'};">${ARMOR_STAT_NAMES[h]}</span>
       </label>`;
     }).join('');
     return `<div style="display:flex;flex-direction:column;gap:2px;flex:1;background:var(--surface2);border:1px solid var(--border2);padding:8px;">
@@ -348,9 +350,9 @@ function renderArmorGodRoll() {
 
   // Base stats toggle
   const baseEl = document.getElementById('agrBaseStats');
-  if (baseEl) baseEl.addEventListener('change', () => { showBaseStats = baseEl.checked; renderArmorGodRoll(); });
+  if (baseEl) baseEl.addEventListener('change', () => { showBaseStats = baseEl.checked; localStorage.setItem('d2showbasestats', showBaseStats?'1':'0'); renderArmorGodRoll(); });
   const newOnlyEl = document.getElementById('agrNewOnly');
-  if (newOnlyEl) newOnlyEl.addEventListener('change', () => { showNewArmorOnly = newOnlyEl.checked; renderArmorGodRoll(); });
+  if (newOnlyEl) newOnlyEl.addEventListener('change', () => { showNewArmorOnly = newOnlyEl.checked; localStorage.setItem('d2shownewarmor', showNewArmorOnly?'1':'0'); renderArmorGodRoll(); });
 
   // Mark buttons
   document.querySelectorAll('#compareContent .mark-row').forEach(row => {
@@ -370,7 +372,8 @@ function renderArmorGodRoll() {
 function openCompare(instanceIds, type) {
   if (type==='armor') armorSort = [{stat:'power',dir:-1},{stat:'none',dir:-1},{stat:'none',dir:-1}];
   showWeaponStats = false;
-  showBaseStats = false;
+  showBaseStats = localStorage.getItem('d2showbasestats') === '1';
+  showNewArmorOnly = localStorage.getItem('d2shownewarmor') === '1';
   renderCompare(instanceIds, type);
   document.getElementById('compareOverlay').classList.add('open');
 }
@@ -733,11 +736,13 @@ function renderCompare(instanceIds, type) {
   const baseToggleEl = document.getElementById('baseStatsToggle');
   if (baseToggleEl) baseToggleEl.addEventListener('change', ()=>{
     showBaseStats = baseToggleEl.checked;
+    localStorage.setItem('d2showbasestats', showBaseStats?'1':'0');
     renderCompare(instanceIds, type);
   });
   const newArmorToggleEl = document.getElementById('newArmorToggle');
   if (newArmorToggleEl) newArmorToggleEl.addEventListener('change', ()=>{
     showNewArmorOnly = newArmorToggleEl.checked;
+    localStorage.setItem('d2shownewarmor', showNewArmorOnly?'1':'0');
     renderCompare(instanceIds, type);
   });
 

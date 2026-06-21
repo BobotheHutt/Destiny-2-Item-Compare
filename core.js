@@ -806,8 +806,8 @@ let armorSort = [{stat:'power', dir:-1},{stat:'none', dir:-1},{stat:'none', dir:
 // Weapon stats toggle (per compare session)
 let showWeaponStats = false;
 // Armor base-only toggle
-let showBaseStats = false;
-let showNewArmorOnly = false;
+let showBaseStats = localStorage.getItem('d2showbasestats') === '1';
+let showNewArmorOnly = localStorage.getItem('d2shownewarmor') === '1';
 // Armor god roll state
 let armorGodRollInstanceIds = [];
 let armorGodRollStats = [

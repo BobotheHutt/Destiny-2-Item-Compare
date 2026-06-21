@@ -266,7 +266,7 @@ function renderTrashMode() {
 
     return `<div class="tm-slot-row" style="display:flex;gap:10px;margin-bottom:18px;align-items:flex-start;">
       <div class="tm-drop-zone" data-zone="char" data-slot="${slot.bucket}"
-        style="position:relative;background:var(--surface);border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);padding:8px;display:flex;flex-direction:column;gap:6px;transition:border-color .15s,background .15s;min-width:180px;">
+        style="position:relative;background:var(--surface);border:1px solid var(--accent-dim);padding:8px;display:flex;flex-direction:column;gap:6px;transition:border-color .15s,background .15s;min-width:180px;">
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);white-space:nowrap;">${slot.name}</span>
           <span style="flex:1;height:1px;background:var(--border2);"></span>
@@ -278,7 +278,7 @@ function renderTrashMode() {
       </div>
       <div style="flex:1;display:flex;flex-direction:column;gap:0;">
         <div class="tm-drop-zone" data-zone="junk" data-slot="${slot.bucket}"
-          style="position:relative;min-height:60px;background:var(--surface);border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);padding:8px;display:flex;flex-wrap:wrap;gap:3px;transition:border-color .15s,background .15s;">
+          style="position:relative;min-height:60px;background:var(--surface);border:1px solid var(--accent-dim);padding:8px;display:flex;flex-wrap:wrap;gap:3px;transition:border-color .15s,background .15s;">
           ${junkIcons||`<div style="color:var(--text-dim);font-size:11px;padding:4px;align-self:center;">None</div>`}
         </div>
       </div>
@@ -319,7 +319,7 @@ function renderTrashMode() {
 
   // Wire drag/drop zones
   panel.querySelectorAll('.tm-drop-zone').forEach(zone=>{
-    zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.style.background='color-mix(in srgb, var(--accent) 15%, transparent)'; zone.style.borderColor='var(--accent)'; zone.style.boxShadow='inset 0 0 0 2px var(--accent)'; });
+    zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.style.background='var(--accent-subtle)'; zone.style.borderColor='var(--accent)'; zone.style.boxShadow='inset 0 0 0 2px var(--accent)'; });
     zone.addEventListener('dragleave', ()=>{ zone.style.background=''; zone.style.borderColor=''; zone.style.boxShadow=''; });
     zone.addEventListener('drop', e=>{ e.preventDefault(); zone.style.background=''; zone.style.borderColor=''; zone.style.boxShadow=''; onTMDrop(e, zone.dataset.zone, Number(zone.dataset.slot)); });
   });

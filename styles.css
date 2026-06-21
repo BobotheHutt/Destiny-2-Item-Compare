@@ -11,6 +11,8 @@
   --text-dim: #6b7280;
   --accent: #c8a84b;
   --accent2: #e8c96a;
+  --accent-dim: rgba(200,168,75,0.4);
+  --accent-subtle: rgba(200,168,75,0.15);
   --titan: #c8a84b;
   --hunter: #4a9fd4;
   --warlock: #9b6fc4;
