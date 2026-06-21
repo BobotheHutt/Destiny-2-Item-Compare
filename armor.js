@@ -202,9 +202,6 @@ function renderArmorGodRoll() {
   const def0 = getItemDef(items[0].item.itemHash);
   const slotName = ARMOR_BUCKET_NAMES[getEffectiveBucketHash(items[0].item)] || 'Armor';
 
-  // Build stat options
-  const statOptions = ARMOR_STAT_HASHES.map(h=>({hash:h, name:ARMOR_STAT_NAMES[h]}));
-
   // Score each item
   function scoreArmor(stats) {
     let score = 0;
@@ -230,22 +227,23 @@ function renderArmorGodRoll() {
 
   const anyStatSelected = armorGodRollStats.some(s => s.hash);
 
-  // Stat selector row
+  // Stat selector — 3 priority slots (matching the in-game 3-stat-priority system), each showing
+  // all 6 stats as checkboxes in canonical order; only one can be checked per slot.
   const selectorHtml = armorGodRollStats.map((s, idx) => {
-    const opts = [
-      `<option value="">— Stat ${idx+1} —</option>`,
-      ...statOptions.map(o => `<option value="${o.hash}" ${s.hash===o.hash?'selected':''}>${o.name}</option>`)
-    ].join('');
-    return `<div style="display:flex;flex-direction:column;gap:4px;flex:1;">
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);">Stat ${idx+1}</div>
-      <select class="agr-stat-sel" data-idx="${idx}"
-        style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:'Barlow',sans-serif;font-size:12px;padding:5px 8px;outline:none;width:100%;">
-        ${opts}
-      </select>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+    const checksHtml = ARMOR_STAT_HASHES.map(h => {
+      const checked = s.hash === h;
+      return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 0;">
+        <input type="checkbox" class="agr-stat-check" data-idx="${idx}" data-hash="${h}" ${checked?'checked':''} style="accent-color:var(--accent);cursor:pointer;width:13px;height:13px;flex-shrink:0;" />
+        <span style="font-size:11px;color:var(--text);">${ARMOR_STAT_NAMES[h]}</span>
+      </label>`;
+    }).join('');
+    return `<div style="display:flex;flex-direction:column;gap:2px;flex:1;background:var(--surface2);border:1px solid var(--border2);padding:8px;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:4px;">Stat ${idx+1}</div>
+      ${checksHtml}
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
         <span style="font-size:10px;color:var(--text-dim);">Weight</span>
         <input type="number" class="agr-weight" data-idx="${idx}" value="${s.weight}" min="0" max="99"
-          style="width:50px;background:var(--surface2);border:1px solid var(--border2);color:var(--accent);font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;text-align:center;padding:3px 4px;outline:none;" />
+          style="width:50px;background:var(--surface);border:1px solid var(--border2);color:var(--accent);font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;text-align:center;padding:3px 4px;outline:none;" />
       </div>
     </div>`;
   }).join('');
@@ -327,7 +325,7 @@ function renderArmorGodRoll() {
     </div>
     <div style="margin-bottom:14px;">
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Stat Ranker — pick up to 3 stats and set their weights</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;background:var(--surface);border:1px solid var(--border2);padding:12px;">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:var(--surface);border:1px solid var(--border2);padding:12px;">
         ${selectorHtml}
       </div>
     </div>
@@ -336,10 +334,15 @@ function renderArmorGodRoll() {
     </div>
     ${rankedHtml}`;
 
-  // Wire stat selects
-  document.querySelectorAll('#compareContent .agr-stat-sel').forEach(sel => {
-    sel.addEventListener('change', () => {
-      armorGodRollStats[Number(sel.dataset.idx)].hash = sel.value ? Number(sel.value) : null;
+  // Wire stat checkboxes — checking one sets this slot's hash; since each slot only ever stores a
+  // single hash, re-rendering automatically shows only that one checked within the slot. Unchecking
+  // the currently-active box clears the slot.
+  document.querySelectorAll('#compareContent .agr-stat-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const idx = Number(cb.dataset.idx);
+      const hash = Number(cb.dataset.hash);
+      if (cb.checked) armorGodRollStats[idx].hash = hash;
+      else if (armorGodRollStats[idx].hash === hash) armorGodRollStats[idx].hash = null;
       renderArmorGodRoll();
     });
   });
