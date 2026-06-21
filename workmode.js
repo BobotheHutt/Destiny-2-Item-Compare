@@ -53,11 +53,6 @@ function renderTrashMode() {
   const panel = document.getElementById('panel-trashmode');
   if (!panel) return;
 
-  const characters = Object.values(allItems.reduce((acc,i)=>{
-    if (i.characterId && i.characterId !== 'null') acc[i.characterId]=i.characterId;
-    return acc;
-  },{}));
-
   // Get characters from profileInfo
   const chars = profileInfo.characterIds || [];
   if (!chars.length) {
@@ -468,7 +463,7 @@ async function transferItem(iid, side, slotBucket) {
     item.characterId = null;
     item.equipped = false;
   } else {
-    item.loc = CLASS_NAMES[allItems.find(i=>i.characterId===trashModeCharId&&i.equipped)?.classType]||'Character';
+    item.loc = CLASS_NAMES[profileInfo.characterClasses?.[trashModeCharId]]||'Character';
     item.characterId = trashModeCharId;
 
     // Workaround for Bungie API bug: transferring onto a character can silently

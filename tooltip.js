@@ -13,6 +13,7 @@ let currentTheme      = localStorage.getItem('d2theme')      || 'destiny';
 let currentAccent     = localStorage.getItem('d2accent')     || 'auto';
 let currentBrightness = Number(localStorage.getItem('d2brightness') || 5);
 let starAnimId = null;
+let _starfieldResizeHandler = null;
 
 function applyTheme(theme, accent, brightness) {
   if (brightness !== undefined) currentBrightness = brightness;
@@ -118,12 +119,15 @@ function startStarfield() {
   if (starAnimId) cancelAnimationFrame(starAnimId);
   draw();
 
-  window.addEventListener('resize', () => {
+  // Remove previous resize handler if any, then add a fresh one
+  if (_starfieldResizeHandler) window.removeEventListener('resize', _starfieldResizeHandler);
+  _starfieldResizeHandler = () => {
     if (currentTheme !== 'starfield') return;
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
     stars.forEach(s => { s.x = Math.random() * canvas.width; s.y = Math.random() * canvas.height; });
-  });
+  };
+  window.addEventListener('resize', _starfieldResizeHandler);
 }
 
 function updateThemePickerUI() {

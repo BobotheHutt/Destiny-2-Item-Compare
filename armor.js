@@ -202,18 +202,6 @@ function renderArmorGodRoll() {
   const def0 = getItemDef(items[0].item.itemHash);
   const slotName = ARMOR_BUCKET_NAMES[getEffectiveBucketHash(items[0].item)] || 'Armor';
 
-  // Score each item
-  function scoreArmor(stats) {
-    let score = 0;
-    armorGodRollStats.forEach(({hash, weight}) => {
-      if (!hash || !weight) return;
-      const val = showBaseStats ? getBaseStat(items.find(x=>x.stats===stats)?.item, hash)
-                                : (stats?.stats?.[hash]?.value || 0);
-      score += val * weight;
-    });
-    return score;
-  }
-
   // Score + sort
   const scored = items.map(({item, inst, stats}) => {
     let score = 0;
@@ -224,6 +212,7 @@ function renderArmorGodRoll() {
     });
     return {item, inst, stats, score};
   }).sort((a,b) => b.score - a.score);
+  const topScore = scored.length ? scored[0].score : 1;
 
   const anyStatSelected = armorGodRollStats.some(s => s.hash);
 
@@ -287,11 +276,13 @@ function renderArmorGodRoll() {
     }).join('');
 
     const totalVal = ARMOR_STAT_HASHES.reduce((sum,h) => sum + (showBaseStats ? getBaseStat(r.item,h) : (r.stats?.stats?.[h]?.value||0)), 0);
-    const scoreDisplay = anyStatSelected ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--accent);">${Math.round(r.score)}</div><div style="font-size:9px;color:var(--text-dim);text-align:right;">score</div>` : '';
+    const pct = topScore > 0 ? Math.round(r.score / topScore * 100) : 100;
+    const scoreColor = pct===100?'var(--fav)':pct>=75?'var(--accent)':'var(--text-muted)';
+    const scoreDisplay = anyStatSelected ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${scoreColor};">${pct}%</div>` : '';
 
-    return `<div style="background:var(--surface);border:1px solid ${idx===0&&anyStatSelected?'var(--fav)':'var(--border2)'};padding:12px;margin-bottom:6px;border-radius:var(--radius-sm);" id="citem-${iid}">
+    return `<div style="background:var(--surface);border:1px solid ${pct===100&&anyStatSelected?'var(--fav)':pct>=75&&anyStatSelected?'var(--accent)':'var(--border2)'};padding:12px;margin-bottom:6px;border-radius:var(--radius-sm);" id="citem-${iid}">
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${idx===0&&anyStatSelected?'var(--fav)':'var(--text-dim)'};width:28px;text-align:center;flex-shrink:0;">${idx+1}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${anyStatSelected?scoreColor:'var(--text-dim)'};width:28px;text-align:center;flex-shrink:0;">${idx+1}</div>
         <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;">${icon}
           ${tierPipsSvg(gearTierOf(iid),'lg')}
           ${iconBottomBar(def, r.inst?.primaryStat?.value, false, 'lg')}
@@ -541,25 +532,6 @@ function renderCompare(instanceIds, type) {
     // ---- WEAPON PERKS BY COLUMN ----
     let perksHtml = '';
     if (type==='weapon' && sockets?.sockets) {
-      // DEBUG: log first weapon's socket data
-      if (sorted.indexOf(sorted.find(x=>x.item.itemInstanceId===iid)) === 0) {
-        // Dump raw socket objects for barrel and trait sockets
-        const itemDefDbg = getItemDef(item.itemHash);
-        sockets.sockets.forEach((s,i)=>{
-          const pd = getItemDef(s.plugHash);
-          const se = itemDefDbg?.sockets?.socketEntries?.[i];
-          const psHash = se?.randomizedPlugSetHash || se?.reusablePlugSetHash || 'none';
-          const ps = psHash!=='none' ? (manifestPlugSets[psHash]||manifestPlugSets[psHash>>>0]) : null;
-          const psCount = ps?.reusablePlugItems?.length || 0;
-          const seDbg = itemDefDbg?.sockets?.socketEntries?.[i];
-          const randH = seDbg?.randomizedPlugSetHash||'none';
-          const reuseH = seDbg?.reusablePlugSetHash||'none';
-          const avail = reusablePlugsData;
-          const psDbg = randH!=='none'?(manifestPlugSets[randH]||manifestPlugSets[randH>>>0]):null;
-          const possible = psDbg?.reusablePlugItems?.length||0;
-          const available = psDbg?.reusablePlugItems?.filter(p=>avail instanceof Set ? avail.has(p.plugItemHash)||p.plugItemHash===s.plugHash : false).length||0;
-        });
-      }
       const cols = [];
       // Use socket index to preserve column order; trait slots get separate columns
       sockets.sockets.forEach((s, sockIdx)=>{
