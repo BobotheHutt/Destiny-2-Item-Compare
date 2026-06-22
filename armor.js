@@ -138,8 +138,16 @@ function selectArmorSlot(classType, slot) {
     const def = getItemDef(a.itemHash);
     return (def?.classType===classType||def?.classType===3) && getEffectiveBucketHash(a)===bucketHash;
   });
-  // Show each armor piece individually; clicking opens compare with ALL items in slot
+  // Show each armor piece individually; clicking opens compare with items sharing the same name
   const allSlotIds = armor.map(a=>a.itemInstanceId);
+  // Pre-group by name for per-item clicks
+  const nameGroups = {};
+  armor.forEach(a => {
+    const def = getItemDef(a.itemHash);
+    const n = def?.displayProperties.name || 'Item';
+    if (!nameGroups[n]) nameGroups[n] = [];
+    nameGroups[n].push(a.itemInstanceId);
+  });
   let aKeyIdx = 0;
   const gridHtml = armor.map(a=>{
     const def = getItemDef(a.itemHash);
@@ -148,7 +156,7 @@ function selectArmorSlot(classType, slot) {
     const m = getMark(a.itemInstanceId);
     const markDot = m?`<div class="mark-indicator mark-${m}"></div>`:'';
     const key = 'ag_'+(aKeyIdx++);
-    gridClickMap[key] = {instanceIds: allSlotIds, type:'armor', scrollTo: a.itemInstanceId};
+    gridClickMap[key] = {instanceIds: nameGroups[name], type:'armor', scrollTo: a.itemInstanceId};
     const aMwOutline = isMasterworked(a.itemInstanceId) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
     const tier = gearTierOf(a.itemInstanceId);
     const power = instanceData[a.itemInstanceId]?.primaryStat?.value||0;
