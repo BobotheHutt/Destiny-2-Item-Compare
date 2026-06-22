@@ -159,15 +159,13 @@ function selectWeaponType(bHash, type) {
     const icon = def?.displayProperties?.hasIcon?`<img src="https://www.bungie.net${def.displayProperties.icon}" />`:'';
     const rk = rarityKey(def);
     const hasDupes = items.length>1;
-    const markIndicators = items.map(it=>{
-      const m = getMark(it.itemInstanceId);
-      return m?`<div class="mark-indicator mark-${m}"></div>`:'';
-    }).join('');
+    const hasNew = items.some(it => isNewItem(it.itemInstanceId));
+    const newDot = hasNew ? `<div class="mark-indicator" style="background:var(--fav);"></div>` : '';
     const key = 'wg_'+(keyIdx++);
     gridClickMap[key] = {instanceIds: items.map(i=>i.itemInstanceId), type:'weapon'};
     const mwOutline = items.some(i=>isMasterworked(i.itemInstanceId)) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
     return `<div class="grid-item ${hasDupes?'has-dupes':''}" data-gkey="${key}">
-      <div class="grid-item-icon" style="${mwOutline}">${icon}${markIndicators}
+      <div class="grid-item-icon" style="${mwOutline}">${icon}${newDot}
         ${hasDupes?`<div class="dupe-badge">${items.length}</div>`:''}
       </div>
       <div class="grid-item-name">${name}</div>
@@ -463,7 +461,10 @@ function renderGodRoll() {
       </div>`;
     }).join('');
 
-    return `<div style="background:var(--surface);border:1px solid ${pct===100?'var(--fav)':pct>=75?'var(--accent)':'var(--border2)'};padding:12px;margin-bottom:6px;border-radius:var(--radius-sm);" id="citem-${iid}">
+    const itemIsNew = isNewItem(iid);
+    const newBadge = itemIsNew ? `<div class="new-badge" style="position:absolute;top:0;left:0;background:var(--fav);color:#0a0c0f;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.06em;padding:1px 6px;text-transform:uppercase;border-radius:0 0 var(--radius-sm) 0;z-index:2;">New</div>` : '';
+
+    return `<div style="position:relative;background:var(--surface);border:1px solid ${pct===100?'var(--fav)':pct>=75?'var(--accent)':'var(--border2)'};padding:12px;margin-bottom:6px;border-radius:var(--radius-sm);" id="citem-${iid}" ${itemIsNew?`onmouseenter="markItemSeen('${iid}');this.querySelector('.new-badge')?.remove()"`:''}>${newBadge}
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${scoreColor};width:32px;text-align:center;flex-shrink:0;line-height:1;">${idx+1}</div>
         <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;">${icon}

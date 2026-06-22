@@ -478,31 +478,48 @@ async function handleOAuthCallback() {
   }
 }
 
+// Returns 'ok' on success, 'expired' if refresh token is gone/expired, 'error' on transient failure
 async function refreshOAuthToken() {
   const refreshToken  = localStorage.getItem('d2oauth_refresh');
   const refreshExpiry = Number(localStorage.getItem('d2oauth_refresh_expiry') || 0);
-  if (!refreshToken || Date.now() > refreshExpiry) return false;
-  try {
-    const resp = await fetch(BUNGIE_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-API-Key': BUNGIE_API_KEY },
-      body: `grant_type=refresh_token&refresh_token=${refreshToken}&client_id=${BUNGIE_CLIENT_ID}`
-    });
-    const data = await resp.json();
-    if (data.access_token) {
-      oauthToken  = data.access_token;
-      oauthExpiry = Date.now() + (data.expires_in * 1000);
-      localStorage.setItem('d2oauth_token',  oauthToken);
-      localStorage.setItem('d2oauth_expiry', String(oauthExpiry));
-      if (data.refresh_token) {
-        localStorage.setItem('d2oauth_refresh', data.refresh_token);
-        localStorage.setItem('d2oauth_refresh_expiry', String(Date.now() + (data.refresh_expires_in * 1000)));
+  if (!refreshToken || Date.now() > refreshExpiry) return 'expired';
+
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const resp = await fetch(BUNGIE_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-API-Key': BUNGIE_API_KEY },
+        body: `grant_type=refresh_token&refresh_token=${refreshToken}&client_id=${BUNGIE_CLIENT_ID}`
+      });
+      if (!resp.ok) {
+        // 401/400 = token actually revoked/invalid — no point retrying
+        if (resp.status === 401 || resp.status === 400) return 'expired';
+        // 429/5xx = transient — retry
+        if (attempt < MAX_RETRIES) { await new Promise(r => setTimeout(r, 1000 * attempt)); continue; }
+        return 'error';
       }
-      updateOAuthStatus();
-      return true;
+      const data = await resp.json();
+      if (data.access_token) {
+        oauthToken  = data.access_token;
+        oauthExpiry = Date.now() + (data.expires_in * 1000);
+        localStorage.setItem('d2oauth_token',  oauthToken);
+        localStorage.setItem('d2oauth_expiry', String(oauthExpiry));
+        if (data.refresh_token) {
+          localStorage.setItem('d2oauth_refresh', data.refresh_token);
+          localStorage.setItem('d2oauth_refresh_expiry', String(Date.now() + (data.refresh_expires_in * 1000)));
+        }
+        updateOAuthStatus();
+        return 'ok';
+      }
+      // Got a 200 but no access_token — treat as expired
+      return 'expired';
+    } catch(e) {
+      console.warn(`Token refresh attempt ${attempt}/${MAX_RETRIES} failed:`, e);
+      if (attempt < MAX_RETRIES) { await new Promise(r => setTimeout(r, 1000 * attempt)); continue; }
     }
-  } catch(e) { console.warn('Token refresh failed:', e); }
-  return false;
+  }
+  return 'error';
 }
 
 function isOAuthValid() {
@@ -515,9 +532,13 @@ function isOAuthValid() {
 // refresh token (same as DIM does) rather than failing and looking like a forced logout.
 async function ensureAuthHeaders() {
   if (!isOAuthValid()) {
-    const refreshed = await refreshOAuthToken();
-    if (!refreshed) {
+    const result = await refreshOAuthToken();
+    if (result === 'expired') {
       showError('Your session expired — please log in with Bungie again.');
+      return null;
+    }
+    if (result === 'error') {
+      showError('Bungie\'s servers didn\'t respond — your session is still valid. Try refreshing the page.');
       return null;
     }
   }
@@ -625,6 +646,13 @@ async function previewPlayer() {
     });
     profileInv2.forEach(i=>allItems.push({...normItem(i),loc:'Vault',equipped:false,characterId:null}));
 
+    // Seed seen items for preview (treat all as seen)
+    const previewIds = new Set(allItems.filter(i=>i.itemInstanceId).map(i=>i.itemInstanceId));
+    if (!localStorage.getItem('d2seenitems')) {
+      seenItems = new Set(previewIds);
+      localStorage.setItem('d2seenitems', JSON.stringify([...seenItems]));
+    }
+
     hideLoading();
     renderCharacters(characters, charEquip, profile);
     renderWeaponsTab();
@@ -632,6 +660,7 @@ async function previewPlayer() {
     document.getElementById('app').style.display='block';
     profileLoaded = true;
     updateOAuthStatus();
+    updateNewItemBadge();
     window._lastCharClass = characters[0]?.classType;
     applyTheme(currentTheme, currentAccent);
   } catch(err) {
@@ -784,6 +813,18 @@ async function searchPlayer() {
     });
     if (marksChanged) localStorage.setItem('d2marks', JSON.stringify(marks));
 
+    // Seed seen-items on first use (so existing inventory isn't falsely "new")
+    // On subsequent loads, prune to current inventory to prevent unbounded growth
+    const currentIds = new Set(allItems.filter(i=>i.itemInstanceId).map(i=>i.itemInstanceId));
+    if (!localStorage.getItem('d2seenitems')) {
+      seenItems = new Set(currentIds);
+      localStorage.setItem('d2seenitems', JSON.stringify([...seenItems]));
+    } else {
+      // Prune: drop IDs no longer in inventory
+      seenItems = new Set([...seenItems].filter(id => currentIds.has(id)));
+      localStorage.setItem('d2seenitems', JSON.stringify([...seenItems]));
+    }
+
     renderCharacters(characters, charEquip, profile);
     renderWeaponsTab();
     renderArmorTab();
@@ -791,6 +832,7 @@ async function searchPlayer() {
     document.getElementById('app').style.display='block';
     profileLoaded = true;
     updateOAuthStatus(); // hide "Load My Guardian" button now that we're loaded
+    updateNewItemBadge();
 
   } catch(err) {
     hideLoading();
@@ -807,7 +849,29 @@ let armorSort = [{stat:'power', dir:-1},{stat:'none', dir:-1},{stat:'none', dir:
 let showWeaponStats = false;
 // Armor base-only toggle
 let showBaseStats = localStorage.getItem('d2showbasestats') === '1';
-let showNewArmorOnly = localStorage.getItem('d2shownewarmor') === '1';
+
+// "New item" tracking — items the user hasn't viewed yet
+let seenItems = new Set(JSON.parse(localStorage.getItem('d2seenitems') || '[]'));
+function isNewItem(instanceId) { return instanceId && !seenItems.has(instanceId); }
+function markItemSeen(instanceId) {
+  if (!instanceId || seenItems.has(instanceId)) return;
+  seenItems.add(instanceId);
+  localStorage.setItem('d2seenitems', JSON.stringify([...seenItems]));
+}
+function markAllSeen() {
+  allItems.forEach(i => { if (i.itemInstanceId) seenItems.add(i.itemInstanceId); });
+  localStorage.setItem('d2seenitems', JSON.stringify([...seenItems]));
+  // Re-render active tabs
+  renderWeaponsTab();
+  renderArmorTab();
+  updateNewItemBadge();
+}
+function updateNewItemBadge() {
+  const btn = document.getElementById('markReadBtn');
+  if (!btn) return;
+  const hasNew = allItems.some(i => isNewItem(i.itemInstanceId));
+  btn.style.display = hasNew ? 'flex' : 'none';
+}
 // Armor god roll state
 let armorGodRollInstanceIds = [];
 let armorGodRollStats = [

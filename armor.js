@@ -54,7 +54,6 @@ function getFilteredArmor() {
     if (tier===5 && !armorFilter.legendary) return false;
     if (tier<5) return false;
     if (armorFilter.locked && getMark(i.itemInstanceId)!=='fav') return false;
-    if (showNewArmorOnly && !isNewArmor(i)) return false;
     if (armorSetFilter && getArmorSetName(i.itemHash) !== armorSetFilter) return false;
     return true;
   });
@@ -156,15 +155,13 @@ function selectArmorSlot(classType, slot) {
     const def = getItemDef(items[0].itemHash);
     const icon = def?.displayProperties?.hasIcon?`<img src="https://www.bungie.net${def.displayProperties.icon}" />`:'';
     const hasDupes = items.length>1;
-    const markIndicators = items.map(it=>{
-      const m = getMark(it.itemInstanceId);
-      return m?`<div class="mark-indicator mark-${m}"></div>`:'';
-    }).join('');
+    const hasNew = items.some(it => isNewItem(it.itemInstanceId));
+    const newDot = hasNew ? `<div class="mark-indicator" style="background:var(--fav);"></div>` : '';
     const key = 'ag_'+(aKeyIdx++);
     gridClickMap[key] = {instanceIds: items.map(i=>i.itemInstanceId), type:'armor'};
     const mwOutline = items.some(i=>isMasterworked(i.itemInstanceId)) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
     return `<div class="grid-item ${hasDupes?'has-dupes':''}" data-gkey="${key}">
-      <div class="grid-item-icon" style="${mwOutline}">${icon}${markIndicators}
+      <div class="grid-item-icon" style="${mwOutline}">${icon}${newDot}
         ${hasDupes?`<div class="dupe-badge">${items.length}</div>`:''}
       </div>
       <div class="grid-item-name">${name}</div>
@@ -206,7 +203,7 @@ function renderArmorGodRoll() {
   const items = instanceIds.map(id=>{
     const item = allItems.find(i=>i.itemInstanceId===id);
     return {item, inst:instanceData[id], stats:statsData[id]};
-  }).filter(x=>x.item && (!showNewArmorOnly || isNewArmor(x.item)));
+  }).filter(x=>x.item);
   if (!items.length) return;
 
   const def0 = getItemDef(items[0].item.itemHash);
@@ -255,10 +252,6 @@ function renderArmorGodRoll() {
       <input type="checkbox" id="agrBaseStats" ${showBaseStats?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
       Base stats only
     </label>
-    <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
-      <input type="checkbox" id="agrNewOnly" ${showNewArmorOnly?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
-      New armor only
-    </label>
   </div>`;
 
   // Ranked armor list
@@ -292,7 +285,11 @@ function renderArmorGodRoll() {
     const scoreColor = pct===100?'var(--fav)':pct>=75?'var(--accent)':'var(--text-muted)';
     const scoreDisplay = anyStatSelected ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${scoreColor};">${pct}%</div>` : '';
 
-    return `<div style="background:var(--surface);border:1px solid ${pct===100&&anyStatSelected?'var(--fav)':pct>=75&&anyStatSelected?'var(--accent)':'var(--border2)'};padding:12px;margin-bottom:6px;border-radius:var(--radius-sm);" id="citem-${iid}">
+    const itemIsNew = isNewItem(iid);
+    const newBadge = itemIsNew ? `<div class="new-badge" style="position:absolute;top:0;left:0;background:var(--fav);color:#0a0c0f;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.06em;padding:1px 6px;text-transform:uppercase;border-radius:0 0 var(--radius-sm) 0;z-index:2;">New</div>` : '';
+
+    return `<div style="position:relative;background:var(--surface);border:1px solid ${pct===100&&anyStatSelected?'var(--fav)':pct>=75&&anyStatSelected?'var(--accent)':'var(--border2)'};padding:12px;margin-bottom:6px;border-radius:var(--radius-sm);" id="citem-${iid}" ${itemIsNew?`onmouseenter="markItemSeen('${iid}');this.querySelector('.new-badge')?.remove()"`:''}>
+      ${newBadge}
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${anyStatSelected?scoreColor:'var(--text-dim)'};width:28px;text-align:center;flex-shrink:0;">${idx+1}</div>
         <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;">${icon}
@@ -361,8 +358,6 @@ function renderArmorGodRoll() {
   // Base stats toggle
   const baseEl = document.getElementById('agrBaseStats');
   if (baseEl) baseEl.addEventListener('change', () => { showBaseStats = baseEl.checked; localStorage.setItem('d2showbasestats', showBaseStats?'1':'0'); renderArmorGodRoll(); });
-  const newOnlyEl = document.getElementById('agrNewOnly');
-  if (newOnlyEl) newOnlyEl.addEventListener('change', () => { showNewArmorOnly = newOnlyEl.checked; localStorage.setItem('d2shownewarmor', showNewArmorOnly?'1':'0'); renderArmorGodRoll(); });
 
   // Mark buttons
   document.querySelectorAll('#compareContent .mark-row').forEach(row => {
@@ -383,7 +378,6 @@ function openCompare(instanceIds, type) {
   if (type==='armor') armorSort = [{stat:'power',dir:-1},{stat:'none',dir:-1},{stat:'none',dir:-1}];
   showWeaponStats = false;
   showBaseStats = localStorage.getItem('d2showbasestats') === '1';
-  showNewArmorOnly = localStorage.getItem('d2shownewarmor') === '1';
   renderCompare(instanceIds, type);
   document.getElementById('compareOverlay').classList.add('open');
 }
@@ -483,7 +477,7 @@ function renderCompare(instanceIds, type) {
   const items = instanceIds.map(id=>{
     const item = allItems.find(i=>i.itemInstanceId===id);
     return {item, inst:instanceData[id], sockets:socketData[id], stats:statsData[id]};
-  }).filter(x=>x.item && (type!=='armor' || !showNewArmorOnly || isNewArmor(x.item)));
+  }).filter(x=>x.item);
   if (!items.length) return;
 
   const def0  = getItemDef(items[0].item.itemHash);
@@ -510,10 +504,6 @@ function renderCompare(instanceIds, type) {
       <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
         <input type="checkbox" id="baseStatsToggle" ${showBaseStats?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
         Base stats only
-      </label>
-      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
-        <input type="checkbox" id="newArmorToggle" ${showNewArmorOnly?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
-        New armor only
       </label>
     </div>`;
     controlsHtml = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:1rem;padding:10px 12px;background:var(--surface);border:1px solid var(--border2);">
@@ -747,12 +737,6 @@ function renderCompare(instanceIds, type) {
   if (baseToggleEl) baseToggleEl.addEventListener('change', ()=>{
     showBaseStats = baseToggleEl.checked;
     localStorage.setItem('d2showbasestats', showBaseStats?'1':'0');
-    renderCompare(instanceIds, type);
-  });
-  const newArmorToggleEl = document.getElementById('newArmorToggle');
-  if (newArmorToggleEl) newArmorToggleEl.addEventListener('change', ()=>{
-    showNewArmorOnly = newArmorToggleEl.checked;
-    localStorage.setItem('d2shownewarmor', showNewArmorOnly?'1':'0');
     renderCompare(instanceIds, type);
   });
 
