@@ -320,7 +320,7 @@ function extractWeaponCols(item, iid, sockets) {
     const equippedDef = getItemDef(s.plugHash);
     if (!equippedDef) return;
     const ident = equippedDef.plug?.plugCategoryIdentifier||'';
-    const excluded = ['intrinsics','origins','masterworks','mods','catalysts','trackers','shader','ornaments','ghosts','holster','auras','finishers','emotes','tier','memento','skins','deepsight','crafting','cosmetic'];
+    const excluded = ['intrinsics','origins','masterworks','mods','catalysts','trackers','shader','ornaments','ghosts','holster','auras','finishers','emotes','tier','memento','skins','deepsight','crafting','cosmetic','mod_empty'];
     if (excluded.some(ex=>ident.includes(ex))) return;
     if (sockIdx === 0) return;
 
@@ -470,7 +470,7 @@ function renderGodRoll() {
     return `<div style="position:relative;background:var(--surface);border:1px solid ${pct===100?'var(--fav)':pct>=75?'var(--accent)':'var(--border2)'};padding:12px;margin-bottom:6px;border-radius:var(--radius-sm);" id="citem-${iid}" ${itemIsNew?`onmouseenter="markItemSeen('${iid}');this.querySelector('.new-badge')?.remove()"`:''}>${newBadge}
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${scoreColor};width:32px;text-align:center;flex-shrink:0;line-height:1;">${idx+1}</div>
-        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;">${icon}
+        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;cursor:pointer;" onmouseenter="startHoverTimer(event,'${iid}')" onmouseleave="clearHoverTimer()">${icon}
           ${tierPipsSvg(gearTierOf(iid),'lg')}
           ${iconBottomBar(def, r.inst?.primaryStat?.value, isCrafted(iid), 'lg')}
         </div>

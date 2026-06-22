@@ -292,7 +292,7 @@ function renderArmorGodRoll() {
       ${newBadge}
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${anyStatSelected?scoreColor:'var(--text-dim)'};width:28px;text-align:center;flex-shrink:0;">${idx+1}</div>
-        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;">${icon}
+        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;cursor:pointer;" onmouseenter="startHoverTimer(event,'${iid}')" onmouseleave="clearHoverTimer()">${icon}
           ${tierPipsSvg(gearTierOf(iid),'lg')}
           ${iconBottomBar(def, r.inst?.primaryStat?.value, false, 'lg')}
         </div>
@@ -691,7 +691,7 @@ function renderCompare(instanceIds, type) {
 
     return `<div class="compare-item" id="citem-${iid}">
       <div class="compare-item-header" style="display:flex;align-items:flex-start;gap:12px;">
-        <div class="compare-item-icon" style="${isMasterworked(iid)?'outline:2px solid var(--exotic-col);outline-offset:-2px;':''}">${icon}</div>
+        <div class="compare-item-icon" style="cursor:pointer;${isMasterworked(iid)?'outline:2px solid var(--exotic-col);outline-offset:-2px;':''}" onmouseenter="startHoverTimer(event,'${iid}')" onmouseleave="clearHoverTimer()">${icon}</div>
         <div style="flex:1;min-width:0;">
           <div class="compare-item-name">${name}</div>
           <div class="compare-item-meta">${damageIcon(def)} ${def?.itemTypeAndTierDisplayName||''} <span class="loc-badge">${loc}${item.equipped?' · Equipped':''}</span></div>
