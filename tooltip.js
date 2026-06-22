@@ -374,6 +374,18 @@ function showItemTooltip(event, iid, interactive) {
       ${statsHtml}
       ${wStatsHtml}
       ${flavorText?`<div style="font-size:10px;color:var(--text-dim);font-style:italic;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px;margin-top:6px;">"${flavorText}"</div>`:''}
+      ${(()=>{
+        if (isWeapon) return '';
+        const sb = getSetBonuses(item.itemHash);
+        if (!sb || !sb.tiers.length) return '';
+        return `<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:6px;margin-top:6px;">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:4px;">${sb.name} Set Bonus</div>
+          ${sb.tiers.map(t=>`<div style="margin-bottom:4px;">
+            <div style="font-size:10px;font-weight:700;color:var(--text-muted);">${t.count}-Piece</div>
+            <div style="font-size:10px;color:var(--text-dim);line-height:1.3;">${t.desc}</div>
+          </div>`).join('')}
+        </div>`;
+      })()}
     </div>`;
 
   document.body.appendChild(tt);
@@ -389,20 +401,28 @@ function showItemTooltip(event, iid, interactive) {
 // ===================== INIT =====================
 (async function init() {
   buildDamageIconMap();
-  updateOAuthStatus();
   initThemePicker();
   applyTheme(currentTheme, currentAccent);
   // Handle OAuth callback redirect - auto-load profile after login
   if (window.location.search.includes('code=')) {
+    updateOAuthStatus();
     const ok = await handleOAuthCallback();
     if (ok) searchPlayer();
   } else if (isOAuthValid()) {
     // Already logged in - auto-load guardian
+    updateOAuthStatus();
     searchPlayer();
   } else {
-    // Try token refresh
-    const refreshed = await refreshOAuthToken();
-    if (refreshed) { updateOAuthStatus(); searchPlayer(); }
+    // Access token expired — try refresh before showing login UI
+    const result = await refreshOAuthToken();
+    if (result === 'ok') {
+      updateOAuthStatus();
+      searchPlayer();
+    } else {
+      // Show login UI only after we know the refresh truly failed
+      updateOAuthStatus();
+      if (result === 'error') showError('Bungie\'s servers didn\'t respond — try refreshing the page.');
+    }
   }
 })();
 

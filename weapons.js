@@ -428,7 +428,10 @@ function renderGodRoll() {
       </div>
       ${entries.length ? entries.map(name=>{
         const sel = godRollSelected[key]?.has(name);
-        return `<label style="display:flex;align-items:center;gap:6px;padding:4px 2px;cursor:pointer;border-radius:2px;${sel?'background:rgba(200,168,75,0.1);':''}">
+        const perkHash = pool.get(name);
+        const perkDef = perkHash ? getItemDef(perkHash) : null;
+        const perkDesc = perkDef?.displayProperties?.description || '';
+        return `<label style="display:flex;align-items:center;gap:6px;padding:4px 2px;cursor:pointer;border-radius:2px;${sel?'background:rgba(200,168,75,0.1);':''}" title="${perkDesc.replace(/"/g,'&quot;')}">
           <input type="checkbox" class="gr-perk-check" data-col="${key}" data-name="${name}" ${sel?'checked':''} style="accent-color:var(--accent);cursor:pointer;width:13px;height:13px;flex-shrink:0;" />
           <span style="font-size:12px;color:${sel?'var(--accent)':'var(--text)'};font-weight:${sel?600:400};line-height:1.3;">${name}</span>
         </label>`;

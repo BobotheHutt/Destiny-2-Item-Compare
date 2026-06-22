@@ -29,6 +29,7 @@ let manifestItems = {};
 let manifestStats = {};
 let manifestPerks = {};
 let manifestPlugSets = {};
+let manifestSetDefs = {};
 // Static armor set table (name + item hashes per set), extracted once from Bungie's
 // DestinyEquipableItemSetDefinition manifest table. Baked in here instead of fetched live every
 // session, since this data only changes when Bungie ships new armor sets — update by re-running
@@ -205,6 +206,20 @@ async function syncLocksToGame() {
 function getItemDef(hash) { return manifestItems[hash] || manifestItems[hash>>>0] || null; }
 function getStatDef(hash) { return manifestStats[hash] || manifestStats[hash>>>0] || null; }
 function getPerkDef(hash) { return manifestPerks[hash] || manifestPerks[hash>>>0] || null; }
+// Returns {name, tiers:[{count, desc}]} for an item's armor set, or null
+function getSetBonuses(itemHash) {
+  const setName = itemHashToSetName[itemHash] || itemHashToSetName[itemHash>>>0];
+  if (!setName) return null;
+  // Find the set definition that contains this item hash
+  for (const def of Object.values(manifestSetDefs)) {
+    const items = def.itemList || [];
+    if (items.some(e => e.itemHash === itemHash || e.itemHash === (itemHash>>>0))) {
+      const tiers = (def.setTiers || []).map(t => ({count: t.tierCount || 0, desc: t.tierDescription || ''})).filter(t => t.desc);
+      if (tiers.length) return {name: setName, tiers};
+    }
+  }
+  return null;
+}
 
 // Damage/ammo icons pulled from manifest at runtime (populated after manifest loads)
 let manifestDamageTypes = {}; // damageTypeEnum -> icon path
@@ -605,14 +620,15 @@ async function previewPlayer() {
       const md = await mr.json();
       const base = md.Response.jsonWorldComponentContentPaths.en;
       setLoading('Downloading definitions…');
-      const [items,stats,perks,plugSets,damageTypes] = await Promise.all([
+      const [items,stats,perks,plugSets,damageTypes,setDefs] = await Promise.all([
         fetch('https://www.bungie.net'+base.DestinyInventoryItemDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyStatDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinySandboxPerkDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyPlugSetDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyDamageTypeDefinition).then(r=>r.json()),
+        fetch('https://www.bungie.net'+base.DestinyEquipableItemSetDefinition).then(r=>r.json()),
       ]);
-      manifestItems=items; manifestStats=stats; manifestPerks=perks; manifestPlugSets=plugSets;
+      manifestItems=items; manifestStats=stats; manifestPerks=perks; manifestPlugSets=plugSets; manifestSetDefs=setDefs;
       Object.values(damageTypes).forEach(dt=>{ if(dt.enumValue&&dt.displayProperties?.hasIcon) manifestDamageTypes[dt.enumValue]=dt.displayProperties.icon; });
     }
 
@@ -713,14 +729,15 @@ async function searchPlayer() {
       const md = await mr.json();
       const base = md.Response.jsonWorldComponentContentPaths.en;
       setLoading('Downloading item definitions…');
-      const [items,stats,perks,plugSets,damageTypes] = await Promise.all([
+      const [items,stats,perks,plugSets,damageTypes,setDefs] = await Promise.all([
         fetch('https://www.bungie.net'+base.DestinyInventoryItemDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyStatDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinySandboxPerkDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyPlugSetDefinition).then(r=>r.json()),
         fetch('https://www.bungie.net'+base.DestinyDamageTypeDefinition).then(r=>r.json()),
+        fetch('https://www.bungie.net'+base.DestinyEquipableItemSetDefinition).then(r=>r.json()),
       ]);
-      manifestItems = items; manifestStats = stats; manifestPerks = perks; manifestPlugSets = plugSets;
+      manifestItems = items; manifestStats = stats; manifestPerks = perks; manifestPlugSets = plugSets; manifestSetDefs = setDefs;
       // Build damage type icon map from manifest
       Object.values(damageTypes).forEach(dt => {
         const enumVal = dt.enumValue;
