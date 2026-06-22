@@ -138,32 +138,34 @@ function selectArmorSlot(classType, slot) {
     const def = getItemDef(a.itemHash);
     return (def?.classType===classType||def?.classType===3) && getEffectiveBucketHash(a)===bucketHash;
   });
-  // Show each armor piece individually; clicking opens compare with items sharing the same name
   const allSlotIds = armor.map(a=>a.itemInstanceId);
-  // Pre-group by name for per-item clicks
-  const nameGroups = {};
-  armor.forEach(a => {
-    const def = getItemDef(a.itemHash);
-    const n = def?.displayProperties.name || 'Item';
-    if (!nameGroups[n]) nameGroups[n] = [];
-    nameGroups[n].push(a.itemInstanceId);
-  });
-  let aKeyIdx = 0;
-  const gridHtml = armor.map(a=>{
+  // Group by name (one icon per unique name, like weapons)
+  const nameMap = {};
+  armor.forEach(a=>{
     const def = getItemDef(a.itemHash);
     const name = def?.displayProperties.name||'Item';
+    if (!nameMap[name]) nameMap[name]=[];
+    nameMap[name].push(a);
+  });
+  // If dupes filter on, only show names with 2+ copies
+  const filteredNameMap = armorFilter.dupes
+    ? Object.fromEntries(Object.entries(nameMap).filter(([,items])=>items.length>=2))
+    : nameMap;
+  let aKeyIdx = 0;
+  const gridHtml = Object.entries(filteredNameMap).map(([name,items])=>{
+    const def = getItemDef(items[0].itemHash);
     const icon = def?.displayProperties?.hasIcon?`<img src="https://www.bungie.net${def.displayProperties.icon}" />`:'';
-    const m = getMark(a.itemInstanceId);
-    const markDot = m?`<div class="mark-indicator mark-${m}"></div>`:'';
+    const hasDupes = items.length>1;
+    const markIndicators = items.map(it=>{
+      const m = getMark(it.itemInstanceId);
+      return m?`<div class="mark-indicator mark-${m}"></div>`:'';
+    }).join('');
     const key = 'ag_'+(aKeyIdx++);
-    gridClickMap[key] = {instanceIds: nameGroups[name], type:'armor', scrollTo: a.itemInstanceId};
-    const aMwOutline = isMasterworked(a.itemInstanceId) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
-    const tier = gearTierOf(a.itemInstanceId);
-    const power = instanceData[a.itemInstanceId]?.primaryStat?.value||0;
-    return `<div class="grid-item" data-gkey="${key}" onmouseenter="startHoverTimer(event,'${a.itemInstanceId}')" onmouseleave="clearHoverTimer()">
-      <div class="grid-item-icon" style="${aMwOutline}">${icon}${markDot}
-        ${tierPipsSvg(tier,'lg')}
-        ${iconBottomBar(def, power, false, 'lg')}
+    gridClickMap[key] = {instanceIds: items.map(i=>i.itemInstanceId), type:'armor'};
+    const mwOutline = items.some(i=>isMasterworked(i.itemInstanceId)) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
+    return `<div class="grid-item ${hasDupes?'has-dupes':''}" data-gkey="${key}">
+      <div class="grid-item-icon" style="${mwOutline}">${icon}${markIndicators}
+        ${hasDupes?`<div class="dupe-badge">${items.length}</div>`:''}
       </div>
       <div class="grid-item-name">${name}</div>
     </div>`;
@@ -171,7 +173,7 @@ function selectArmorSlot(classType, slot) {
   const armorGridEl = document.getElementById('armorItemGrid');
   armorGridEl.innerHTML = `
     <div class="item-grid-section">
-      <div class="item-grid-title">${slot} <span style="color:var(--text-dim);font-size:10px;margin-left:4px;">${armor.length} items</span>
+      <div class="item-grid-title">${slot} <span style="color:var(--text-dim);font-size:10px;margin-left:4px;">${armorFilter.dupes ? Object.keys(filteredNameMap).length + ' dupe groups' : armor.length + ' items · ' + Object.keys(filteredNameMap).length + ' unique'}</span>
         <button style="margin-left:12px;background:var(--accent);color:#0a0c0f;border:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;cursor:pointer;" id="compareAllArmorBtn">Compare All</button>
       </div>
       <div class="item-grid">${gridHtml}</div>
