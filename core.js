@@ -434,8 +434,33 @@ function formatDate(iso) {
 
 function setLoading(t) { document.getElementById('loadingText').textContent=t; document.getElementById('loading').style.display='block'; }
 function hideLoading()  { document.getElementById('loading').style.display='none'; }
-function showError(m)   { const e=document.getElementById('error'); e.textContent=m; e.style.display='block'; }
+function showError(m, retryFn) {
+  const e=document.getElementById('error');
+  e.textContent='';
+  e.appendChild(document.createTextNode(m + ' '));
+  if (retryFn) {
+    const btn = document.createElement('button');
+    btn.textContent = 'Retry';
+    btn.style.cssText = 'background:none;border:1px solid #fff;color:#fff;font-family:"Barlow Condensed",sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 12px;cursor:pointer;margin-left:8px;';
+    btn.onclick = () => { clearError(); retryFn(); };
+    e.appendChild(btn);
+  }
+  e.style.display='block';
+}
 function clearError()   { document.getElementById('error').style.display='none'; }
+
+async function retryRefresh() {
+  setLoading('Retrying authentication…');
+  const result = await refreshOAuthToken();
+  hideLoading();
+  if (result === 'ok') {
+    searchPlayer();
+  } else if (result === 'expired') {
+    showError('Your session expired — please log in with Bungie again.');
+  } else {
+    showError('Bungie\'s servers still aren\'t responding.', retryRefresh);
+  }
+}
 
 function switchMain(tab) {
   document.querySelectorAll('.main-tab').forEach((t,i)=>t.classList.toggle('active',['characters','weapons','armor','trashmode'][i]===tab));
@@ -497,7 +522,10 @@ async function handleOAuthCallback() {
 async function refreshOAuthToken() {
   const refreshToken  = localStorage.getItem('d2oauth_refresh');
   const refreshExpiry = Number(localStorage.getItem('d2oauth_refresh_expiry') || 0);
-  if (!refreshToken || Date.now() > refreshExpiry) return 'expired';
+  if (!refreshToken || Date.now() > refreshExpiry) {
+    console.warn('[oauth] No refresh token or refresh token expired');
+    return 'expired';
+  }
 
   const MAX_RETRIES = 3;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -508,9 +536,17 @@ async function refreshOAuthToken() {
         body: `grant_type=refresh_token&refresh_token=${refreshToken}&client_id=${BUNGIE_CLIENT_ID}`
       });
       if (!resp.ok) {
-        // 401/400 = token actually revoked/invalid — no point retrying
-        if (resp.status === 401 || resp.status === 400) return 'expired';
-        // 429/5xx = transient — retry
+        // Parse the error body to distinguish genuine expiry from transient failures
+        let errorBody = '';
+        try { errorBody = await resp.text(); } catch(_) {}
+        console.warn(`[oauth] Refresh attempt ${attempt}/${MAX_RETRIES} — HTTP ${resp.status}:`, errorBody);
+        // Only truly expired if Bungie says invalid_grant or unauthorized_client
+        if (resp.status === 400 || resp.status === 401) {
+          if (errorBody.includes('invalid_grant') || errorBody.includes('unauthorized_client')) {
+            return 'expired';
+          }
+        }
+        // Everything else (429, 5xx, other 400 reasons) — retry
         if (attempt < MAX_RETRIES) { await new Promise(r => setTimeout(r, 1000 * attempt)); continue; }
         return 'error';
       }
@@ -527,10 +563,10 @@ async function refreshOAuthToken() {
         updateOAuthStatus();
         return 'ok';
       }
-      // Got a 200 but no access_token — treat as expired
+      console.warn('[oauth] 200 response but no access_token:', JSON.stringify(data));
       return 'expired';
     } catch(e) {
-      console.warn(`Token refresh attempt ${attempt}/${MAX_RETRIES} failed:`, e);
+      console.warn(`[oauth] Refresh attempt ${attempt}/${MAX_RETRIES} network error:`, e);
       if (attempt < MAX_RETRIES) { await new Promise(r => setTimeout(r, 1000 * attempt)); continue; }
     }
   }
@@ -553,7 +589,7 @@ async function ensureAuthHeaders() {
       return null;
     }
     if (result === 'error') {
-      showError('Bungie\'s servers didn\'t respond — your session is still valid. Try refreshing the page.');
+      showError('Bungie\'s servers didn\'t respond — your session is still valid.', retryRefresh);
       return null;
     }
   }

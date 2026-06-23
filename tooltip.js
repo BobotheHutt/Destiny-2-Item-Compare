@@ -421,7 +421,7 @@ function showItemTooltip(event, iid, interactive) {
     } else {
       // Show login UI only after we know the refresh truly failed
       updateOAuthStatus();
-      if (result === 'error') showError('Bungie\'s servers didn\'t respond — try refreshing the page.');
+      if (result === 'error') showError('Bungie\'s servers didn\'t respond.', retryRefresh);
     }
   }
 })();
