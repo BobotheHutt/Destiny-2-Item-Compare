@@ -449,6 +449,25 @@ function showError(m, retryFn) {
 }
 function clearError()   { document.getElementById('error').style.display='none'; }
 
+// Non-blocking toast notification — auto-dismisses after `ms` (default 4s)
+function showToast(msg, ms) {
+  ms = ms || 4000;
+  let tray = document.getElementById('toast-tray');
+  if (!tray) {
+    tray = document.createElement('div');
+    tray.id = 'toast-tray';
+    tray.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;display:flex;flex-direction:column;gap:6px;pointer-events:none;';
+    document.body.appendChild(tray);
+  }
+  const t = document.createElement('div');
+  t.style.cssText = 'background:#1a1a24;border:1px solid var(--junk);color:var(--text);font-family:"Barlow",sans-serif;font-size:12px;padding:10px 16px;border-radius:var(--radius-sm);pointer-events:auto;cursor:pointer;max-width:340px;box-shadow:0 4px 20px rgba(0,0,0,0.6);opacity:0;transform:translateX(20px);transition:opacity .2s,transform .2s;';
+  t.textContent = msg;
+  t.onclick = () => { t.style.opacity='0'; t.style.transform='translateX(20px)'; setTimeout(()=>t.remove(), 200); };
+  tray.appendChild(t);
+  requestAnimationFrame(() => { t.style.opacity='1'; t.style.transform='translateX(0)'; });
+  setTimeout(() => { if (t.parentNode) { t.style.opacity='0'; t.style.transform='translateX(20px)'; setTimeout(()=>t.remove(), 200); } }, ms);
+}
+
 async function retryRefresh() {
   setLoading('Retrying authentication…');
   const result = await refreshOAuthToken();

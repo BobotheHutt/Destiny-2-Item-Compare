@@ -412,7 +412,7 @@ async function transferItem(iid, side, slotBucket) {
     });
     const pmData = await pmResp.json();
     if (pmData.ErrorCode !== 1) {
-      alert(`Bungie won't let this item be pulled from the Postmaster: ${pmData.Message}`);
+      showToast(`Postmaster pull failed: ${pmData.Message}`);
       return;
     }
     item.inPostmaster = false;
@@ -423,7 +423,7 @@ async function transferItem(iid, side, slotBucket) {
   const vaultCount = allItems.filter(i=>i.loc==='Vault' && (WEAPON_BUCKETS.has(getEffectiveBucketHash(i))||ARMOR_BUCKETS.has(getEffectiveBucketHash(i)))).length;
   const needsVaultSpace = side === 'char' || (side === 'junk' && !isInVault);
   if (needsVaultSpace && vaultCount >= 1300) {
-    alert('Vault is full (1300/1300). Clear some space before transferring.');
+    showToast('Vault is full (1300/1300). Clear some space before transferring.');
     return;
   }
 
@@ -445,7 +445,7 @@ async function transferItem(iid, side, slotBucket) {
         body: JSON.stringify({itemReferenceHash: item.itemHash, itemId: iid, stackSize:1, characterId: item.characterId, transferToVault: true, membershipType})
       });
       const d1 = await r1.json();
-      if (d1.ErrorCode !== 1) { alert(`Transfer failed: ${d1.Message}`); return; }
+      if (d1.ErrorCode !== 1) { showToast(`Transfer failed: ${d1.Message}`); return; }
       await new Promise(r=>setTimeout(r,300));
     }
   }
@@ -455,7 +455,7 @@ async function transferItem(iid, side, slotBucket) {
     body: JSON.stringify({itemReferenceHash: item.itemHash, itemId: iid, stackSize:1, characterId, transferToVault, membershipType})
   });
   const data = await resp.json();
-  if (data.ErrorCode !== 1) { alert(`Transfer failed: ${data.Message}`); return; }
+  if (data.ErrorCode !== 1) { showToast(`Transfer failed: ${data.Message}`); return; }
 
   // Update local state
   if (transferToVault) {
