@@ -384,6 +384,12 @@ function openCompare(instanceIds, type) {
 
 function closeCompare() {
   document.getElementById('compareOverlay').classList.remove('open');
+  // Re-render grid so new-item dots update after items were marked seen via hover
+  if (document.getElementById('panel-weapons')?.classList.contains('active') && activeWeaponCategory && activeWeaponType) {
+    selectWeaponType(activeWeaponCategory, activeWeaponType);
+  } else if (document.getElementById('panel-armor')?.classList.contains('active') && activeArmorClass !== null && activeArmorSlot) {
+    selectArmorSlot(activeArmorClass, activeArmorSlot);
+  }
 }
 
 function sortedItems(items, type) {
