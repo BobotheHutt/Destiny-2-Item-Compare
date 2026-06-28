@@ -462,8 +462,9 @@ function renderGodRoll() {
           const isWanted = wanted?.size>0 && wanted.has(pn);
           const isEquipped = h===col.equippedHash;
           const isEnhanced = d?.inventory?.tierType === 3;
-          const enhStar = isEnhanced ? '<span style="color:var(--accent);">✦</span>' : '';
-          return `<div style="font-size:11px;line-height:1.4;padding:1px 0;color:${isWanted?'var(--fav)':isEquipped?'var(--text)':'var(--text-muted)'};font-weight:${isWanted||isEquipped?600:400};">${isWanted?'✓ ':isEquipped&&!isWanted?'· ':'  '}${pn}${enhStar}</div>`;
+          const enhStar = isEnhanced ? ' <span style="color:var(--accent);">✦</span>' : '';
+          const dot = isEquipped ? '<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#fff;margin-right:4px;vertical-align:middle;"></span>' : '';
+          return `<div style="font-size:11px;line-height:1.4;padding:1px 0;color:${isWanted?'var(--fav)':'var(--text-muted)'};font-weight:${isWanted?600:400};">${isWanted?'✓ ':''}${dot}${pn}${enhStar}</div>`;
         }).join('')}
       </div>`;
     }).join('');
