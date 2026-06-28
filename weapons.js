@@ -163,9 +163,8 @@ function selectWeaponType(bHash, type) {
     const newDot = hasNew ? `<div class="mark-indicator" style="background:var(--accent);"></div>` : '';
     const key = 'wg_'+(keyIdx++);
     gridClickMap[key] = {instanceIds: items.map(i=>i.itemInstanceId), type:'weapon'};
-    const mwOutline = items.some(i=>isMasterworked(i.itemInstanceId)) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
     return `<div class="grid-item ${hasDupes?'has-dupes':''}" data-gkey="${key}">
-      <div class="grid-item-icon" style="${mwOutline}">${icon}${newDot}
+      <div class="grid-item-icon">${icon}${newDot}
         ${hasDupes?`<div class="dupe-badge">${items.length}</div>`:''}
       </div>
       <div class="grid-item-name">${name}</div>
@@ -475,7 +474,7 @@ function renderGodRoll() {
     return `<div style="position:relative;background:var(--surface);border:1px solid ${pct===100?'var(--fav)':pct>=75?'var(--accent)':'var(--border2)'};padding:12px;margin-bottom:6px;border-radius:var(--radius-sm);" id="citem-${iid}" ${itemIsNew?`onmouseenter="markItemSeen('${iid}');this.querySelector('.new-badge')?.remove()"`:''}>${newBadge}
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${scoreColor};width:32px;text-align:center;flex-shrink:0;line-height:1;">${idx+1}</div>
-        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;cursor:pointer;" onmouseenter="startHoverTimer(event,'${iid}')" onmouseleave="clearHoverTimer()">${icon}
+        <div style="width:48px;height:48px;background:var(--surface2);overflow:hidden;flex-shrink:0;position:relative;cursor:pointer;${isMasterworked(iid)?'outline:2px solid var(--exotic-col);outline-offset:-2px;':''}" onmouseenter="startHoverTimer(event,'${iid}')" onmouseleave="clearHoverTimer()">${icon}
           ${tierPipsSvg(gearTierOf(iid),'lg')}
           ${iconBottomBar(def, r.inst?.primaryStat?.value, isCrafted(iid), 'lg')}
         </div>
