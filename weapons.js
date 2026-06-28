@@ -321,7 +321,7 @@ function extractWeaponCols(item, iid, sockets) {
     const equippedDef = getItemDef(s.plugHash);
     if (!equippedDef) return;
     const ident = equippedDef.plug?.plugCategoryIdentifier||'';
-    const excluded = ['intrinsics','origins','masterworks','mods','catalysts','trackers','shader','ornaments','ghosts','holster','auras','finishers','emotes','tier','memento','skins','deepsight','crafting','cosmetic','mod_empty'];
+    const excluded = ['intrinsics','origins','masterworks','mods','catalysts','trackers','shader','ornaments','ghosts','holster','auras','finishers','emotes','tier','memento','skins','deepsight','crafting','cosmetic','mod_empty','mod_guns'];
     if (excluded.some(ex=>ident.includes(ex))) return;
     if (sockIdx === 0) return;
 
