@@ -295,6 +295,7 @@ function getWeaponRolls(instanceIds) {
 function classifyPrimarySocket(ident) {
   if (ident.includes('launcherbarrels')) return 'Launcher Barrel';
   if (ident.includes('barrels')) return 'Barrel';
+  if (ident.includes('tubes')) return 'Launch Tube';
   if (ident.includes('blades')) return 'Blade';
   if (ident.includes('rails')) return 'Rail';
   if (ident.includes('bowstrings')) return 'Bowstring';
