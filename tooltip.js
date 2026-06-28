@@ -400,6 +400,7 @@ function showItemTooltip(event, iid, interactive) {
 
 // ===================== INIT =====================
 (async function init() {
+  document.getElementById('app-version').textContent = 'v' + APP_VERSION;
   buildDamageIconMap();
   initThemePicker();
   applyTheme(currentTheme, currentAccent);
