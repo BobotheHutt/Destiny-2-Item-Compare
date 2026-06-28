@@ -160,7 +160,7 @@ function selectWeaponType(bHash, type) {
     const rk = rarityKey(def);
     const hasDupes = items.length>1;
     const hasNew = items.some(it => isNewItem(it.itemInstanceId));
-    const newDot = hasNew ? `<div class="mark-indicator" style="background:var(--fav);"></div>` : '';
+    const newDot = hasNew ? `<div class="mark-indicator" style="background:var(--accent);"></div>` : '';
     const key = 'wg_'+(keyIdx++);
     gridClickMap[key] = {instanceIds: items.map(i=>i.itemInstanceId), type:'weapon'};
     const mwOutline = items.some(i=>isMasterworked(i.itemInstanceId)) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
@@ -432,9 +432,10 @@ function renderGodRoll() {
         const perkHash = pool.get(name);
         const perkDef = perkHash ? getItemDef(perkHash) : null;
         const perkDesc = perkDef?.displayProperties?.description || '';
+        const isEnhanced = perkDef?.inventory?.tierType === 3;
         return `<label style="display:flex;align-items:center;gap:6px;padding:4px 2px;cursor:pointer;border-radius:2px;${sel?'background:rgba(200,168,75,0.1);':''}" title="${perkDesc.replace(/"/g,'&quot;')}">
           <input type="checkbox" class="gr-perk-check" data-col="${key}" data-name="${name}" ${sel?'checked':''} style="accent-color:var(--accent);cursor:pointer;width:13px;height:13px;flex-shrink:0;" />
-          <span style="font-size:12px;color:${sel?'var(--accent)':'var(--text)'};font-weight:${sel?600:400};line-height:1.3;">${name}</span>
+          <span style="font-size:12px;color:${sel?'var(--accent)':'var(--text)'};font-weight:${sel?600:400};line-height:1.3;">${name}${isEnhanced?'<span style="color:var(--accent);margin-left:2px;" title="Enhanced">✦</span>':''}</span>
         </label>`;
       }).join('') : `<span style="font-size:11px;color:var(--text-dim);font-style:italic;">No rolls found</span>`}
     </div>`;
@@ -460,7 +461,9 @@ function renderGodRoll() {
           const d=getItemDef(h); const pn=d?.displayProperties?.name||'';
           const isWanted = wanted?.size>0 && wanted.has(pn);
           const isEquipped = h===col.equippedHash;
-          return `<div style="font-size:11px;line-height:1.4;padding:1px 0;color:${isWanted?'var(--fav)':isEquipped?'var(--accent)':'var(--text-muted)'};font-weight:${isWanted||isEquipped?600:400};">${isWanted?'✓ ':isEquipped&&!isWanted?'·  ':'   '}${pn}</div>`;
+          const isEnhanced = d?.inventory?.tierType === 3;
+          const enhStar = isEnhanced ? '<span style="color:var(--accent);">✦</span>' : '';
+          return `<div style="font-size:11px;line-height:1.4;padding:1px 0;color:${isWanted?'var(--fav)':isEquipped?'var(--text)':'var(--text-muted)'};font-weight:${isWanted||isEquipped?600:400};">${isWanted?'✓ ':isEquipped&&!isWanted?'· ':'  '}${pn}${enhStar}</div>`;
         }).join('')}
       </div>`;
     }).join('');

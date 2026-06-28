@@ -156,7 +156,7 @@ function selectArmorSlot(classType, slot) {
     const icon = def?.displayProperties?.hasIcon?`<img src="https://www.bungie.net${def.displayProperties.icon}" />`:'';
     const hasDupes = items.length>1;
     const hasNew = items.some(it => isNewItem(it.itemInstanceId));
-    const newDot = hasNew ? `<div class="mark-indicator" style="background:var(--fav);"></div>` : '';
+    const newDot = hasNew ? `<div class="mark-indicator" style="background:var(--accent);"></div>` : '';
     const key = 'ag_'+(aKeyIdx++);
     gridClickMap[key] = {instanceIds: items.map(i=>i.itemInstanceId), type:'armor'};
     const mwOutline = items.some(i=>isMasterworked(i.itemInstanceId)) ? 'outline:2px solid var(--exotic-col);outline-offset:-2px;' : '';
