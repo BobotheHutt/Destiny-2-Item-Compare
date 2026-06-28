@@ -180,7 +180,7 @@ function selectWeaponType(bHash, type) {
     node.addEventListener('click', ()=>{
       const entry = gridClickMap[node.dataset.gkey];
       if (entry) {
-        if (entry.type==='weapon') openGodRoll(entry.instanceIds);
+        if (entry.type==='weapon') openWeaponCompare(entry.instanceIds);
         else openCompare(entry.instanceIds, entry.type);
       }
     });
@@ -192,33 +192,33 @@ function selectWeaponType(bHash, type) {
 // ===================== GOD ROLL MODAL =====================
 // State is keyed by position (col1-col4) rather than literal labels, since different
 // weapon types use different column names (Barrel/Blade/Bowstring, Magazine/Guard/Arrow, etc.)
-let godRollInstanceIds = [];
-let godRollWeights = {col1:5, col2:5, col3:10, col4:10};
-let godRollSelected = {col1:new Set(), col2:new Set(), col3:new Set(), col4:new Set()};
-let godRollExactOnly = false;
+let weaponCompareIds = [];
+let weaponCompareWeights = {col1:5, col2:5, col3:10, col4:10};
+let weaponCompareSelected = {col1:new Set(), col2:new Set(), col3:new Set(), col4:new Set()};
+let weaponCompareExact = false;
 
 // Per-weapon perk filter persistence — keyed by weapon name, so reopening the same weapon later
 // restores your previous checkbox selections, point weights, and Exact Match setting.
-function getGodRollPrefsKey(instanceIds) {
+function getWeaponPrefsKey(instanceIds) {
   const hash = allItems.find(i=>i.itemInstanceId===instanceIds[0])?.itemHash;
   return getItemDef(hash)?.displayProperties?.name || null;
 }
-function loadGodRollPrefs(weaponName) {
+function loadWeaponPrefs(weaponName) {
   if (!weaponName) return null;
   try {
     const all = JSON.parse(localStorage.getItem('d2godrollprefs')||'{}');
     return all[weaponName] || null;
   } catch(e) { return null; }
 }
-function saveGodRollPrefs() {
-  const weaponName = getGodRollPrefsKey(godRollInstanceIds);
+function saveWeaponPrefs() {
+  const weaponName = getWeaponPrefsKey(weaponCompareIds);
   if (!weaponName) return;
   try {
     const all = JSON.parse(localStorage.getItem('d2godrollprefs')||'{}');
     all[weaponName] = {
-      weights: godRollWeights,
-      selected: {col1:[...godRollSelected.col1], col2:[...godRollSelected.col2], col3:[...godRollSelected.col3], col4:[...godRollSelected.col4]},
-      exactOnly: godRollExactOnly,
+      weights: weaponCompareWeights,
+      selected: {col1:[...weaponCompareSelected.col1], col2:[...weaponCompareSelected.col2], col3:[...weaponCompareSelected.col3], col4:[...weaponCompareSelected.col4]},
+      exactOnly: weaponCompareExact,
     };
     localStorage.setItem('d2godrollprefs', JSON.stringify(all));
   } catch(e) { /* localStorage unavailable — non-fatal, prefs just won't persist */ }
@@ -234,25 +234,25 @@ function buildLightggLinks(instanceIds) {
   </a>`).join('');
 }
 
-function openGodRoll(instanceIds) {
-  godRollInstanceIds = instanceIds;
-  const saved = loadGodRollPrefs(getGodRollPrefsKey(instanceIds));
+function openWeaponCompare(instanceIds) {
+  weaponCompareIds = instanceIds;
+  const saved = loadWeaponPrefs(getWeaponPrefsKey(instanceIds));
   if (saved) {
-    godRollWeights = {...saved.weights};
-    godRollSelected = {
+    weaponCompareWeights = {...saved.weights};
+    weaponCompareSelected = {
       col1: new Set(saved.selected?.col1||[]),
       col2: new Set(saved.selected?.col2||[]),
       col3: new Set(saved.selected?.col3||[]),
       col4: new Set(saved.selected?.col4||[]),
     };
-    godRollExactOnly = !!saved.exactOnly;
+    weaponCompareExact = !!saved.exactOnly;
   } else {
     // No saved prefs for this weapon — reset to defaults
-    godRollSelected = {col1:new Set(), col2:new Set(), col3:new Set(), col4:new Set()};
-    godRollWeights = {col1:5, col2:5, col3:10, col4:10};
-    godRollExactOnly = false;
+    weaponCompareSelected = {col1:new Set(), col2:new Set(), col3:new Set(), col4:new Set()};
+    weaponCompareWeights = {col1:5, col2:5, col3:10, col4:10};
+    weaponCompareExact = false;
   }
-  renderGodRoll();
+  renderWeaponCompare();
   document.getElementById('compareOverlay').classList.add('open');
 }
 
@@ -379,9 +379,9 @@ function scoreWeapon(itemRollCols) {
   let maxScore = 0;
   const COL_KEYS = ['col1','col2','col3','col4'];
   COL_KEYS.forEach(key => {
-    const w = godRollWeights[key]||0;
+    const w = weaponCompareWeights[key]||0;
     maxScore += w;
-    const wanted = godRollSelected[key];
+    const wanted = weaponCompareSelected[key];
     if (!wanted||!wanted.size) { score += w; return; } // no selection = full points
     const colData = itemRollCols.find(c=>c.colKey===key);
     if (!colData) return;
@@ -394,27 +394,27 @@ function scoreWeapon(itemRollCols) {
   return {score, maxScore};
 }
 
-function renderGodRoll() {
+function renderWeaponCompare() {
   const COL_KEYS = ['col1','col2','col3','col4'];
-  const {poolByCol, itemRolls, colLabels} = getWeaponRolls(godRollInstanceIds);
+  const {poolByCol, itemRolls, colLabels} = getWeaponRolls(weaponCompareIds);
 
-  const def0 = getItemDef(allItems.find(i=>i.itemInstanceId===godRollInstanceIds[0])?.itemHash);
+  const def0 = getItemDef(allItems.find(i=>i.itemInstanceId===weaponCompareIds[0])?.itemHash);
   const weaponName = def0?.displayProperties?.name||'Weapon';
 
-  const anySelected = COL_KEYS.some(c=>godRollSelected[c]?.size>0);
+  const anySelected = COL_KEYS.some(c=>weaponCompareSelected[c]?.size>0);
 
   // Score + sort items
   const scored = itemRolls.map(r=>{
     const {score, maxScore} = scoreWeapon(r.cols);
     return {...r, score, maxScore};
-  }).filter(r=>!godRollExactOnly||r.score===r.maxScore)
+  }).filter(r=>!weaponCompareExact||r.score===r.maxScore)
     .sort((a,b)=>b.score-a.score);
 
   // Build perk pool columns — label is whatever this weapon type actually uses
   // (Barrel/Blade/Bowstring, Magazine/Guard/Arrow, etc.), looked up via colLabels
   const poolHtml = COL_KEYS.map(key=>{
     const pool = poolByCol[key];
-    const w = godRollWeights[key]||0;
+    const w = weaponCompareWeights[key]||0;
     const label = colLabels[key];
     const entries = [...pool.keys()].sort();
     return `<div style="background:var(--surface);border:1px solid var(--border2);padding:10px 8px;border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:0;">
@@ -427,7 +427,7 @@ function renderGodRoll() {
         </span>
       </div>
       ${entries.length ? entries.map(name=>{
-        const sel = godRollSelected[key]?.has(name);
+        const sel = weaponCompareSelected[key]?.has(name);
         const perkHash = pool.get(name);
         const perkDef = perkHash ? getItemDef(perkHash) : null;
         const perkDesc = perkDef?.displayProperties?.description || '';
@@ -453,7 +453,7 @@ function renderGodRoll() {
     const scoreColor = pct===100?'var(--fav)':pct>=75?'var(--accent)':pct>=50?'var(--text)':'var(--text-muted)';
 
     const colsHtml = r.cols.map(col=>{
-      const wanted = godRollSelected[col.colKey];
+      const wanted = weaponCompareSelected[col.colKey];
       return `<div style="flex:1;min-width:0;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:3px;">${col.label}</div>
         ${col.hashes.map(h=>{
@@ -486,7 +486,7 @@ function renderGodRoll() {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:${scoreColor};">${anySelected?pct+'%':''}</div>
           <div class="mark-row" data-iid="${iid}" data-type="weapon" style="display:flex;gap:3px;">
-            <button class="fav-heart-btn" onclick="toggleFavorite('${iid}');renderGodRoll();" style="flex:0 0 50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:5px 0;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius-sm);background:${isFavorite(iid)?'var(--favorite)':'var(--surface)'};color:${isFavorite(iid)?'#0a0c0f':'var(--text-muted)'};border:1px solid var(--favorite);line-height:0;">${favoriteIconInline(14, isFavorite(iid)?'#0a0c0f':'var(--favorite)')}<span style="line-height:1;margin-top:1px;">Fav</span></button>
+            <button class="fav-heart-btn" onclick="toggleFavorite('${iid}');renderWeaponCompare();" style="flex:0 0 50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:5px 0;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius-sm);background:${isFavorite(iid)?'var(--favorite)':'var(--surface)'};color:${isFavorite(iid)?'#0a0c0f':'var(--text-muted)'};border:1px solid var(--favorite);line-height:0;">${favoriteIconInline(14, isFavorite(iid)?'#0a0c0f':'var(--favorite)')}<span style="line-height:1;margin-top:1px;">Fav</span></button>
             <button class="mark-btn fav ${getLockBtnClass(iid)}" data-mark="fav" style="flex:0 0 50px;padding:5px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;" title="${getLockBtnTitle(iid)}"><span>🔒</span><span>Lock</span></button>
             <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="flex:0 0 50px;padding:5px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;line-height:0;">${markIconSvg('junk',14,mark==='junk'?'#fff':'var(--junk)')}<span style="line-height:1;margin-top:1px;">Junk</span></button>
             <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="flex:0 0 50px;padding:5px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;line-height:0;">${markIconSvg('infuse',14,mark==='infuse'?'#0a0c0f':'var(--infuse)')}<span style="line-height:1;margin-top:1px;">Infuse</span></button>
@@ -500,11 +500,11 @@ function renderGodRoll() {
   document.getElementById('compareContent').innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;padding-right:40px;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <div class="compare-title" style="margin-bottom:0;">${weaponName} — ${godRollInstanceIds.length} ${godRollInstanceIds.length===1?'copy':'copies'}</div>
-        <div style="display:flex;align-items:center;gap:6px;">${buildLightggLinks(godRollInstanceIds)}</div>
+        <div class="compare-title" style="margin-bottom:0;">${weaponName} — ${weaponCompareIds.length} ${weaponCompareIds.length===1?'copy':'copies'}</div>
+        <div style="display:flex;align-items:center;gap:6px;">${buildLightggLinks(weaponCompareIds)}</div>
       </div>
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;">
-        <input type="checkbox" id="grExactOnly" ${godRollExactOnly?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
+        <input type="checkbox" id="grExactOnly" ${weaponCompareExact?'checked':''} style="accent-color:var(--accent);cursor:pointer;" />
         Exact match only
       </label>
     </div>
@@ -522,25 +522,25 @@ function renderGodRoll() {
     cb.addEventListener('change', ()=>{
       const col = cb.dataset.col;
       const name = cb.dataset.name;
-      if (cb.checked) godRollSelected[col].add(name);
-      else godRollSelected[col].delete(name);
-      saveGodRollPrefs();
-      renderGodRoll();
+      if (cb.checked) weaponCompareSelected[col].add(name);
+      else weaponCompareSelected[col].delete(name);
+      saveWeaponPrefs();
+      renderWeaponCompare();
     });
   });
 
   // Wire up weight inputs
   document.querySelectorAll('#compareContent .gr-weight').forEach(inp=>{
     inp.addEventListener('change', ()=>{
-      godRollWeights[inp.dataset.col] = Number(inp.value)||0;
-      saveGodRollPrefs();
-      renderGodRoll();
+      weaponCompareWeights[inp.dataset.col] = Number(inp.value)||0;
+      saveWeaponPrefs();
+      renderWeaponCompare();
     });
   });
 
   // Exact match toggle
   const exactEl = document.getElementById('grExactOnly');
-  if (exactEl) exactEl.addEventListener('change', ()=>{ godRollExactOnly=exactEl.checked; saveGodRollPrefs(); renderGodRoll(); });
+  if (exactEl) exactEl.addEventListener('change', ()=>{ weaponCompareExact=exactEl.checked; saveWeaponPrefs(); renderWeaponCompare(); });
 
   // Mark buttons
   document.querySelectorAll('#compareContent .mark-row').forEach(row=>{
@@ -549,8 +549,8 @@ function renderGodRoll() {
       btn.addEventListener('click', ()=>{
         const m = btn.dataset.mark;
         const current = getMark(iid);
-        setMark(iid, current===m?null:m, 'weapon', godRollInstanceIds);
-        renderGodRoll();
+        setMark(iid, current===m?null:m, 'weapon', weaponCompareIds);
+        renderWeaponCompare();
       });
     });
   });

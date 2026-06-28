@@ -177,28 +177,28 @@ function selectArmorSlot(classType, slot) {
   armorGridEl.querySelectorAll('.grid-item').forEach(el=>{
     el.addEventListener('click', ()=>{
       const entry = gridClickMap[el.dataset.gkey];
-      openArmorGodRoll(entry.instanceIds);
+      openArmorCompare(entry.instanceIds);
     });
   });
   armorGridEl.querySelector('#compareAllArmorBtn')?.addEventListener('click', ()=>{
-    openArmorGodRoll(allSlotIds);
+    openArmorCompare(allSlotIds);
   });
 }
 
 // ===================== ARMOR GOD ROLL RANKER =====================
-function openArmorGodRoll(instanceIds) {
-  armorGodRollInstanceIds = instanceIds;
-  armorGodRollStats = [
+function openArmorCompare(instanceIds) {
+  armorCompareIds = instanceIds;
+  armorCompareStats = [
     {hash: null, weight: 10},
     {hash: null, weight: 8},
     {hash: null, weight: 5},
   ];
-  renderArmorGodRoll();
+  renderArmorCompare();
   document.getElementById('compareOverlay').classList.add('open');
 }
 
-function renderArmorGodRoll() {
-  const instanceIds = armorGodRollInstanceIds;
+function renderArmorCompare() {
+  const instanceIds = armorCompareIds;
   const items = instanceIds.map(id=>{
     const item = allItems.find(i=>i.itemInstanceId===id);
     return {item, inst:instanceData[id], stats:statsData[id]};
@@ -211,7 +211,7 @@ function renderArmorGodRoll() {
   // Score + sort
   const scored = items.map(({item, inst, stats}) => {
     let score = 0;
-    armorGodRollStats.forEach(({hash, weight}) => {
+    armorCompareStats.forEach(({hash, weight}) => {
       if (!hash || !weight) return;
       const val = showBaseStats ? getBaseStat(item, hash) : (stats?.stats?.[hash]?.value || 0);
       score += val * weight;
@@ -220,12 +220,12 @@ function renderArmorGodRoll() {
   }).sort((a,b) => b.score - a.score);
   const topScore = scored.length ? scored[0].score : 1;
 
-  const anyStatSelected = armorGodRollStats.some(s => s.hash);
+  const anyStatSelected = armorCompareStats.some(s => s.hash);
 
   // Stat selector — 3 priority slots (matching the in-game 3-stat-priority system), each showing
   // all 6 stats as checkboxes in canonical order; only one can be checked per slot.
-  const selectorHtml = armorGodRollStats.map((s, idx) => {
-    const usedByOthers = new Set(armorGodRollStats.filter((_,i) => i !== idx).map(x => x.hash).filter(Boolean));
+  const selectorHtml = armorCompareStats.map((s, idx) => {
+    const usedByOthers = new Set(armorCompareStats.filter((_,i) => i !== idx).map(x => x.hash).filter(Boolean));
     const checksHtml = ARMOR_STAT_HASHES.map(h => {
       const checked = s.hash === h;
       const taken = usedByOthers.has(h);
@@ -266,7 +266,7 @@ function renderArmorGodRoll() {
     // Stat bars
     const statRowsHtml = ARMOR_STAT_HASHES.map(h => {
       const val = showBaseStats ? getBaseStat(r.item, h) : (r.stats?.stats?.[h]?.value || 0);
-      const isSelected = armorGodRollStats.some(s => s.hash === h);
+      const isSelected = armorCompareStats.some(s => s.hash === h);
       // Find best value across all items for this stat
       const bestVal = Math.max(...scored.map(x => showBaseStats ? getBaseStat(x.item, h) : (x.stats?.stats?.[h]?.value || 0)));
       const isBest = val === bestVal && val > 0 && scored.length > 1;
@@ -306,7 +306,7 @@ function renderArmorGodRoll() {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
           ${scoreDisplay}
           <div class="mark-row" data-iid="${iid}" data-type="armor" style="display:flex;gap:3px;">
-            <button class="fav-heart-btn" onclick="toggleFavorite('${iid}');renderArmorGodRoll();" style="flex:0 0 50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:5px 0;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius-sm);background:${isFavorite(iid)?'var(--favorite)':'var(--surface)'};color:${isFavorite(iid)?'#0a0c0f':'var(--text-muted)'};border:1px solid var(--favorite);line-height:0;">${favoriteIconInline(14, isFavorite(iid)?'#0a0c0f':'var(--favorite)')}<span style="line-height:1;margin-top:1px;">Fav</span></button>
+            <button class="fav-heart-btn" onclick="toggleFavorite('${iid}');renderArmorCompare();" style="flex:0 0 50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:5px 0;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius-sm);background:${isFavorite(iid)?'var(--favorite)':'var(--surface)'};color:${isFavorite(iid)?'#0a0c0f':'var(--text-muted)'};border:1px solid var(--favorite);line-height:0;">${favoriteIconInline(14, isFavorite(iid)?'#0a0c0f':'var(--favorite)')}<span style="line-height:1;margin-top:1px;">Fav</span></button>
             <button class="mark-btn fav ${getLockBtnClass(iid)}" data-mark="fav" style="flex:0 0 50px;padding:5px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;" title="${getLockBtnTitle(iid)}"><span>🔒</span><span>Lock</span></button>
             <button class="mark-btn junk ${mark==='junk'?'active':''}" data-mark="junk" style="flex:0 0 50px;padding:5px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;line-height:0;">${markIconSvg('junk',14,mark==='junk'?'#fff':'var(--junk)')}<span style="line-height:1;margin-top:1px;">Junk</span></button>
             <button class="mark-btn infuse ${mark==='infuse'?'active':''}" data-mark="infuse" style="flex:0 0 50px;padding:5px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;line-height:0;">${markIconSvg('infuse',14,mark==='infuse'?'#0a0c0f':'var(--infuse)')}<span style="line-height:1;margin-top:1px;">Infuse</span></button>
@@ -340,23 +340,23 @@ function renderArmorGodRoll() {
     cb.addEventListener('change', () => {
       const idx = Number(cb.dataset.idx);
       const hash = Number(cb.dataset.hash);
-      if (cb.checked) armorGodRollStats[idx].hash = hash;
-      else if (armorGodRollStats[idx].hash === hash) armorGodRollStats[idx].hash = null;
-      renderArmorGodRoll();
+      if (cb.checked) armorCompareStats[idx].hash = hash;
+      else if (armorCompareStats[idx].hash === hash) armorCompareStats[idx].hash = null;
+      renderArmorCompare();
     });
   });
 
   // Wire weight inputs
   document.querySelectorAll('#compareContent .agr-weight').forEach(inp => {
     inp.addEventListener('change', () => {
-      armorGodRollStats[Number(inp.dataset.idx)].weight = Number(inp.value) || 0;
-      renderArmorGodRoll();
+      armorCompareStats[Number(inp.dataset.idx)].weight = Number(inp.value) || 0;
+      renderArmorCompare();
     });
   });
 
   // Base stats toggle
   const baseEl = document.getElementById('agrBaseStats');
-  if (baseEl) baseEl.addEventListener('change', () => { showBaseStats = baseEl.checked; localStorage.setItem('d2showbasestats', showBaseStats?'1':'0'); renderArmorGodRoll(); });
+  if (baseEl) baseEl.addEventListener('change', () => { showBaseStats = baseEl.checked; localStorage.setItem('d2showbasestats', showBaseStats?'1':'0'); renderArmorCompare(); });
 
   // Mark buttons
   document.querySelectorAll('#compareContent .mark-row').forEach(row => {
@@ -366,7 +366,7 @@ function renderArmorGodRoll() {
         const m = btn.dataset.mark;
         const current = getMark(iid);
         saveMark(iid, current===m?null:m);
-        renderArmorGodRoll();
+        renderArmorCompare();
         if (activeArmorClass!==null && activeArmorSlot) selectArmorSlot(activeArmorClass, activeArmorSlot);
       });
     });

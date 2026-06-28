@@ -945,8 +945,8 @@ function updateNewItemBadge() {
   btn.style.display = hasNew ? 'flex' : 'none';
 }
 // Armor god roll state
-let armorGodRollInstanceIds = [];
-let armorGodRollStats = [
+let armorCompareIds = [];
+let armorCompareStats = [
   {hash: null, weight: 10},
   {hash: null, weight: 8},
   {hash: null, weight: 5},
